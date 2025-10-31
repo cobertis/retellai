@@ -207,7 +207,7 @@ export class DatabaseStorage implements IStorage {
   async createAgent(userId: string, agentData: InsertAgent & { id?: string }): Promise<Agent> {
     const [agent] = await db
       .insert(agents)
-      .values({ ...agentData, userId })
+      .values({ ...agentData, userId } as any)
       .returning();
     return agent;
   }
@@ -533,8 +533,10 @@ export class DatabaseStorage implements IStorage {
     // Group by day
     const callsByDay: { [key: string]: number } = {};
     recentCalls.forEach(call => {
-      const date = new Date(call.createdAt).toISOString().split('T')[0];
-      callsByDay[date] = (callsByDay[date] || 0) + 1;
+      if (call.createdAt) {
+        const date = new Date(call.createdAt).toISOString().split('T')[0];
+        callsByDay[date] = (callsByDay[date] || 0) + 1;
+      }
     });
 
     const recentCallsData = Object.entries(callsByDay).map(([date, calls]) => ({
@@ -594,17 +596,19 @@ export class DatabaseStorage implements IStorage {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const recentCalls = allCalls.filter(c => new Date(c.createdAt) >= thirtyDaysAgo);
+    const recentCalls = allCalls.filter(c => c.createdAt && new Date(c.createdAt) >= thirtyDaysAgo);
 
     const callsByDay: { [key: string]: { calls: number; successful: number; failed: number } } = {};
     recentCalls.forEach(call => {
-      const date = new Date(call.createdAt).toISOString().split('T')[0];
-      if (!callsByDay[date]) {
-        callsByDay[date] = { calls: 0, successful: 0, failed: 0 };
+      if (call.createdAt) {
+        const date = new Date(call.createdAt).toISOString().split('T')[0];
+        if (!callsByDay[date]) {
+          callsByDay[date] = { calls: 0, successful: 0, failed: 0 };
+        }
+        callsByDay[date].calls++;
+        if (call.callStatus === 'completed') callsByDay[date].successful++;
+        if (call.callStatus === 'failed') callsByDay[date].failed++;
       }
-      callsByDay[date].calls++;
-      if (call.callStatus === 'completed') callsByDay[date].successful++;
-      if (call.callStatus === 'failed') callsByDay[date].failed++;
     });
 
     const callsByDayData = Object.entries(callsByDay).map(([date, data]) => ({
@@ -643,7 +647,7 @@ export class DatabaseStorage implements IStorage {
     const costByDay: { [key: string]: number } = {};
     allLogs.forEach(log => {
       const call = allCalls.find(c => c.id === log.callId);
-      if (call) {
+      if (call && call.createdAt) {
         const date = new Date(call.createdAt).toISOString().split('T')[0];
         const cost = (log.callCost as any)?.combined_cost || 0;
         costByDay[date] = (costByDay[date] || 0) + cost;

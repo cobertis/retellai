@@ -178,12 +178,12 @@ export function registerRoutes(app: Express) {
         voiceId: retellAgent.voice_id || "default",
         language: retellAgent.language || "en-US",
         responseEngineType: retellAgent.response_engine?.type || "retell-llm",
-        generalPrompt: retellAgent.general_prompt || null,
+        generalPrompt: (retellAgent as any).general_prompt || null,
         responsiveness: retellAgent.responsiveness || 1,
         interruptionSensitivity: retellAgent.interruption_sensitivity || 1,
-        llmId: retellAgent.llm_id || null,
-        generalTools: retellAgent.general_tools || null,
-        metadata: retellAgent.metadata || null,
+        llmId: (retellAgent as any).llm_id || null,
+        generalTools: (retellAgent as any).general_tools || null,
+        metadata: (retellAgent as any).metadata || null,
       });
 
       res.status(201).json(agent);
@@ -523,8 +523,9 @@ export function registerRoutes(app: Express) {
         // Start making calls with concurrency limit of 20
         await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
           try {
+            const fromNum = campaign.fromNumber || undefined;
             const retellCall = await retellService.createPhoneCall({
-              from_number: campaign.fromNumber ?? undefined,
+              from_number: fromNum as any,
               to_number: phoneNumber.phoneNumber,
               override_agent_id: agentId,
               metadata: {
@@ -604,8 +605,9 @@ export function registerRoutes(app: Express) {
       await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
         try {
           // Create call in Retell AI
+          const fromNum = campaign.fromNumber || undefined;
           const retellCall = await retellService.createPhoneCall({
-            from_number: campaign.fromNumber ?? undefined,
+            from_number: fromNum as any,
             to_number: phoneNumber.phoneNumber,
             override_agent_id: campaign.agentId,
             metadata: {
