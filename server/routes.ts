@@ -962,6 +962,13 @@ export function registerRoutes(app: Express) {
               event.call.duration_ms,
               event.call.disconnection_reason
             );
+
+            // Update campaign stats when call ends
+            const call = await storage.getCall(event.call.call_id);
+            if (call?.campaignId) {
+              const callSucceeded = event.call.call_status === 'ended' || event.call.call_status === 'completed';
+              await storage.handleCallEnded(call.campaignId, callSucceeded);
+            }
           }
           break;
 

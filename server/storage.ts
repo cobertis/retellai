@@ -73,6 +73,7 @@ export interface IStorage {
   }): Promise<void>;
   incrementCampaignInProgress(id: string): Promise<void>;
   incrementCampaignFailed(id: string): Promise<void>;
+  handleCallEnded(campaignId: string, callSuccessful: boolean): Promise<void>;
   deleteCampaign(id: string): Promise<void>;
   stopCampaign(id: string): Promise<void>;
 
@@ -385,6 +386,40 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date(),
       })
       .where(eq(campaigns.id, id));
+  }
+
+  async handleCallEnded(campaignId: string, callSuccessful: boolean): Promise<void> {
+    // Atomically update campaign stats when a call ends
+    await db
+      .update(campaigns)
+      .set({
+        inProgressCalls: sql`GREATEST(COALESCE(${campaigns.inProgressCalls}, 0) - 1, 0)`,
+        completedCalls: callSuccessful 
+          ? sql`COALESCE(${campaigns.completedCalls}, 0) + 1`
+          : campaigns.completedCalls,
+        failedCalls: !callSuccessful 
+          ? sql`COALESCE(${campaigns.failedCalls}, 0) + 1`
+          : campaigns.failedCalls,
+        updatedAt: new Date(),
+      })
+      .where(eq(campaigns.id, campaignId));
+
+    // Check if all calls are done and mark campaign as completed
+    const [campaign] = await db
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId));
+
+    if (campaign && campaign.status === 'active' && campaign.inProgressCalls === 0) {
+      await db
+        .update(campaigns)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(campaigns.id, campaignId));
+    }
   }
 
   async deleteCampaign(id: string): Promise<void> {
