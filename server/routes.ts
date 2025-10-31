@@ -25,6 +25,30 @@ function getUserId(req: Request): string {
   return user.id;
 }
 
+// Helper function to process calls with concurrency limit
+async function processConcurrently<T>(
+  items: T[],
+  concurrencyLimit: number,
+  processor: (item: T) => Promise<void>
+): Promise<void> {
+  const results: Promise<void>[] = [];
+  let index = 0;
+
+  async function processNext(): Promise<void> {
+    while (index < items.length) {
+      const currentIndex = index++;
+      await processor(items[currentIndex]);
+    }
+  }
+
+  // Start initial batch
+  for (let i = 0; i < Math.min(concurrencyLimit, items.length); i++) {
+    results.push(processNext());
+  }
+
+  await Promise.all(results);
+}
+
 export function registerRoutes(app: Express) {
   // Auth endpoints
   app.post("/api/register", async (req: Request, res: Response) => {
@@ -496,11 +520,11 @@ export function registerRoutes(app: Express) {
           startedAt: new Date(),
         });
 
-        // Start making ALL calls
-        const callPromises = phoneNumbers.map(async (phoneNumber) => {
+        // Start making calls with concurrency limit of 20
+        await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
           try {
             const retellCall = await retellService.createPhoneCall({
-              from_number: campaign.fromNumber || undefined,
+              from_number: campaign.fromNumber ?? undefined,
               to_number: phoneNumber.phoneNumber,
               override_agent_id: agentId,
               metadata: {
@@ -535,24 +559,14 @@ export function registerRoutes(app: Express) {
               inVoicemail: null,
             });
 
-            const currentCampaign = await storage.getCampaign(campaign.id);
-            if (currentCampaign) {
-              await storage.updateCampaignStats(campaign.id, {
-                inProgressCalls: currentCampaign.inProgressCalls + 1,
-              });
-            }
+            // Atomic increment - no race conditions
+            await storage.incrementCampaignInProgress(campaign.id);
           } catch (error) {
             console.error("Error creating call:", error);
-            const currentCampaign = await storage.getCampaign(campaign.id);
-            if (currentCampaign) {
-              await storage.updateCampaignStats(campaign.id, {
-                failedCalls: currentCampaign.failedCalls + 1,
-              });
-            }
+            // Atomic increment - no race conditions
+            await storage.incrementCampaignFailed(campaign.id);
           }
         });
-
-        await Promise.all(callPromises);
       }
       
       res.status(201).json(campaign);
@@ -586,12 +600,12 @@ export function registerRoutes(app: Express) {
         startedAt: new Date(),
       });
 
-      // Start making ALL calls
-      const callPromises = phoneNumbers.map(async (phoneNumber) => {
+      // Start making calls with concurrency limit of 20
+      await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
         try {
           // Create call in Retell AI
           const retellCall = await retellService.createPhoneCall({
-            from_number: campaign.fromNumber || undefined,
+            from_number: campaign.fromNumber ?? undefined,
             to_number: phoneNumber.phoneNumber,
             override_agent_id: campaign.agentId,
             metadata: {
@@ -631,8 +645,6 @@ export function registerRoutes(app: Express) {
           console.error("Error creating call:", error);
         }
       });
-
-      await Promise.all(callPromises);
 
       res.json({ message: "Campaign started successfully" });
     } catch (error: any) {

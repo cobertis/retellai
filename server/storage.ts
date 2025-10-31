@@ -71,6 +71,8 @@ export interface IStorage {
     startedAt?: Date;
     completedAt?: Date;
   }): Promise<void>;
+  incrementCampaignInProgress(id: string): Promise<void>;
+  incrementCampaignFailed(id: string): Promise<void>;
 
   // Call operations
   createCall(call: InsertCall): Promise<Call>;
@@ -358,6 +360,26 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(campaigns)
       .set({ ...stats, updatedAt: new Date() })
+      .where(eq(campaigns.id, id));
+  }
+
+  async incrementCampaignInProgress(id: string): Promise<void> {
+    await db
+      .update(campaigns)
+      .set({
+        inProgressCalls: sql`COALESCE(${campaigns.inProgressCalls}, 0) + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(campaigns.id, id));
+  }
+
+  async incrementCampaignFailed(id: string): Promise<void> {
+    await db
+      .update(campaigns)
+      .set({
+        failedCalls: sql`COALESCE(${campaigns.failedCalls}, 0) + 1`,
+        updatedAt: new Date(),
+      })
       .where(eq(campaigns.id, id));
   }
 
