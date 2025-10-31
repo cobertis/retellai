@@ -236,16 +236,32 @@ export function registerRoutes(app: Express) {
         stream
           .pipe(csvParser())
           .on('data', (row: any) => {
-            const phoneNumber = row.phoneNumber || row.phone || row.number || row.Phone || row.PhoneNumber;
+            // Normalize column names to lowercase for case-insensitive matching
+            const normalizedRow: any = {};
+            Object.keys(row).forEach(key => {
+              normalizedRow[key.toLowerCase()] = row[key];
+            });
+            
+            // Try to find phone number in various column names
+            const phoneNumber = normalizedRow.phonenumber || 
+                              normalizedRow.phone || 
+                              normalizedRow.number || 
+                              normalizedRow.tel || 
+                              normalizedRow.telephone;
             
             // Only add rows with valid phone numbers
             if (phoneNumber && phoneNumber.toString().trim()) {
               phoneNumbers.push({
                 listId: id,
                 phoneNumber: phoneNumber.toString().trim(),
-                firstName: row.firstName || row.first_name || row.FirstName || null,
-                lastName: row.lastName || row.last_name || row.LastName || null,
-                email: row.email || row.Email || null,
+                firstName: normalizedRow.firstname || 
+                          normalizedRow.first_name || 
+                          normalizedRow.name || 
+                          null,
+                lastName: normalizedRow.lastname || 
+                         normalizedRow.last_name || 
+                         null,
+                email: normalizedRow.email || null,
                 metadata: row,
               });
             }
