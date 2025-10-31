@@ -97,6 +97,21 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Update user settings
+  app.patch("/api/user/settings", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const { defaultAgentId } = z.object({
+        defaultAgentId: z.string().optional(),
+      }).parse(req.body);
+      
+      const user = await storage.updateUserSettings(userId, { defaultAgentId });
+      res.json(user);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // Agent endpoints
   app.get("/api/agents", isAuthenticated, async (req: Request, res: Response) => {
     try {

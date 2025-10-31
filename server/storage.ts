@@ -34,6 +34,7 @@ export interface IStorage {
   getUserWithPassword(email: string): Promise<any | undefined>;
   createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User>;
 
   // Agent operations
   createAgent(userId: string, agent: InsertAgent): Promise<Agent>;
@@ -95,6 +96,7 @@ export class DatabaseStorage implements IStorage {
       firstName: users.firstName,
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
+      defaultAgentId: users.defaultAgentId,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).where(eq(users.id, id));
@@ -108,6 +110,7 @@ export class DatabaseStorage implements IStorage {
       firstName: users.firstName,
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
+      defaultAgentId: users.defaultAgentId,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).where(eq(users.email, email));
@@ -136,6 +139,7 @@ export class DatabaseStorage implements IStorage {
       firstName: user.firstName,
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,
+      defaultAgentId: user.defaultAgentId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -160,6 +164,29 @@ export class DatabaseStorage implements IStorage {
       firstName: user.firstName,
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,
+      defaultAgentId: user.defaultAgentId,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  async updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({
+        defaultAgentId: settings.defaultAgentId,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning();
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profileImageUrl: user.profileImageUrl,
+      defaultAgentId: user.defaultAgentId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
