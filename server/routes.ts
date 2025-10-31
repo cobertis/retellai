@@ -347,9 +347,18 @@ export function registerRoutes(app: Express) {
             
             // Only add rows with valid phone numbers
             if (phoneNumber && phoneNumber.toString().trim()) {
+              // Normalize phone number to E.164 format
+              let normalizedPhone = phoneNumber.toString().trim();
+              if (!normalizedPhone.startsWith('+')) {
+                // Remove all non-numeric characters
+                const digitsOnly = normalizedPhone.replace(/[^0-9]/g, '');
+                // If it starts with 1, use as is, otherwise add 1 prefix (for US numbers)
+                normalizedPhone = digitsOnly.startsWith('1') ? `+${digitsOnly}` : `+1${digitsOnly}`;
+              }
+              
               phoneNumbers.push({
                 listId: id,
-                phoneNumber: phoneNumber.toString().trim(),
+                phoneNumber: normalizedPhone,
                 firstName: normalizedRow.firstname || 
                           normalizedRow.first_name || 
                           normalizedRow.name || 
@@ -535,13 +544,17 @@ export function registerRoutes(app: Express) {
               },
             });
 
+            const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+              ? phoneNumber.phoneNumber 
+              : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+              
             await storage.createCall({
               id: retellCall.call_id,
               userId,
               campaignId: campaign.id,
               agentId,
-              fromNumber: campaign.fromNumber || null,
-              toNumber: phoneNumber.phoneNumber,
+              fromNumber: fromNum,
+              toNumber: toNumber,
               callStatus: retellCall.call_status || 'queued',
               startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
               endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
@@ -617,14 +630,18 @@ export function registerRoutes(app: Express) {
             },
           });
 
-          // Store call in our database
+          // Store call in our database  
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+            
           await storage.createCall({
             id: retellCall.call_id,
             userId,
             campaignId: id,
             agentId: campaign.agentId,
             fromNumber: fromNum,
-            toNumber: phoneNumber.phoneNumber,
+            toNumber: toNumber,
             callStatus: retellCall.call_status || 'queued',
             startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
             endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
