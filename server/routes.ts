@@ -903,16 +903,22 @@ export function registerRoutes(app: Express) {
 
         case 'call_analyzed':
           if (event.call) {
-            // Update call log with analysis data
+            // Update call log with complete analysis data
             await storage.updateCallLog(event.call.call_id, {
               transcript: event.call.transcript || null,
+              transcriptObject: event.call.transcript_object || null,
+              transcriptWithToolCalls: event.call.transcript_with_tool_calls || null,
               recordingUrl: event.call.recording_url || null,
               recordingMultiChannelUrl: event.call.recording_multi_channel_url || null,
-              callSummary: event.call.call_summary || null,
-              callSuccessful: event.call.call_successful ?? null,
-              userSentiment: event.call.user_sentiment || null,
-              inVoicemail: event.call.in_voicemail ?? null,
+              publicLogUrl: event.call.public_log_url || null,
+              callAnalysis: event.call.call_analysis || null,
+              callSummary: event.call.call_analysis?.call_summary || event.call.call_summary || null,
+              callSuccessful: event.call.call_analysis?.call_successful ?? event.call.call_successful ?? null,
+              userSentiment: event.call.call_analysis?.user_sentiment || event.call.user_sentiment || null,
+              inVoicemail: event.call.call_analysis?.in_voicemail ?? event.call.in_voicemail ?? null,
+              customAnalysisData: event.call.call_analysis?.custom_analysis_data || null,
               callCost: event.call.call_cost || null,
+              llmTokenUsage: event.call.llm_token_usage || null,
               latency: event.call.latency || null,
             });
           }

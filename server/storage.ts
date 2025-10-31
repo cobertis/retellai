@@ -541,11 +541,11 @@ export class DatabaseStorage implements IStorage {
       ? callsWithDuration.reduce((sum, c) => sum + (c.durationMs || 0), 0) / callsWithDuration.length
       : 0;
 
-    // Get total cost from call logs
+    // Get total cost from call logs (Retell stores cost in cents, so divide by 100)
     const callLogsData = await db.select().from(callLogs);
     const totalCost = callLogsData.reduce((sum, log) => {
       const cost = (log.callCost as any)?.combined_cost || 0;
-      return sum + cost;
+      return sum + (cost / 100); // Convert cents to dollars
     }, 0);
 
     // Get recent calls (last 7 days)
@@ -617,7 +617,7 @@ export class DatabaseStorage implements IStorage {
 
     const totalCost = allLogs.reduce((sum, log) => {
       const cost = (log.callCost as any)?.combined_cost || 0;
-      return sum + cost;
+      return sum + (cost / 100); // Convert cents to dollars
     }, 0);
 
     const avgCost = allCalls.length > 0 ? totalCost / allCalls.length : 0;
@@ -673,14 +673,14 @@ export class DatabaseStorage implements IStorage {
       count,
     }));
 
-    // Cost by day
+    // Cost by day (Retell stores cost in cents, so divide by 100)
     const costByDay: { [key: string]: number } = {};
     allLogs.forEach(log => {
       const call = allCalls.find(c => c.id === log.callId);
       if (call && call.createdAt) {
         const date = new Date(call.createdAt).toISOString().split('T')[0];
         const cost = (log.callCost as any)?.combined_cost || 0;
-        costByDay[date] = (costByDay[date] || 0) + cost;
+        costByDay[date] = (costByDay[date] || 0) + (cost / 100); // Convert cents to dollars
       }
     });
 

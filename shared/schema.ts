@@ -200,6 +200,7 @@ export const callLogs = pgTable("call_logs", {
   latency: jsonb("latency"),
   callAnalysis: jsonb("call_analysis"),
   callCost: jsonb("call_cost"),
+  llmTokenUsage: jsonb("llm_token_usage"),
   userSentiment: varchar("user_sentiment"),
   callSuccessful: boolean("call_successful"),
   inVoicemail: boolean("in_voicemail"),

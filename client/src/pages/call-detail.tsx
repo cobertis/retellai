@@ -156,7 +156,7 @@ export default function CallDetail() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${callLog?.callCost ? (callLog.callCost as any).combined_cost?.toFixed(2) || '0.00' : '0.00'}
+              ${callLog?.callCost ? ((callLog.callCost as any).combined_cost / 100)?.toFixed(2) || '0.00' : '0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
               Total call cost
@@ -209,11 +209,55 @@ export default function CallDetail() {
             <CardHeader>
               <CardTitle>Call Transcript</CardTitle>
               <CardDescription>
-                Full conversation transcript
+                Full conversation with timestamps and tool invocations
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {callLog?.transcript ? (
+              {callLog?.transcriptWithToolCalls ? (
+                <div className="space-y-3">
+                  {(callLog.transcriptWithToolCalls as any[]).map((entry, idx) => {
+                    const isAgent = entry.role === 'agent';
+                    const isTool = entry.role === 'tool_call' || entry.tool_calls;
+                    
+                    return (
+                      <div key={idx}>
+                        <div className={`p-3 rounded-md ${isAgent ? 'bg-primary/5' : 'bg-muted/50'}`}>
+                          <div className="flex items-start justify-between">
+                            <p className="text-sm flex-1">
+                              <span className="font-semibold capitalize">{entry.role}: </span>
+                              {entry.content}
+                            </p>
+                            {entry.words?.[0]?.start && (
+                              <span className="text-xs text-muted-foreground ml-2 font-mono">
+                                {entry.words[0].start.toFixed(1)}s
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {entry.tool_calls?.map((tool: any, toolIdx: number) => (
+                          <div key={toolIdx} className="ml-6 mt-2 p-2 rounded-md bg-accent/20 border border-accent">
+                            <div className="flex items-center gap-2">
+                              <Play className="h-3 w-3 text-accent-foreground" />
+                              <span className="text-xs font-semibold">Tool: {tool.name}</span>
+                            </div>
+                            {tool.arguments && (
+                              <pre className="mt-1 text-xs text-muted-foreground overflow-x-auto">
+                                {JSON.stringify(tool.arguments, null, 2)}
+                              </pre>
+                            )}
+                            {tool.result && (
+                              <div className="mt-1 text-xs">
+                                <span className="font-medium">Result: </span>
+                                <span className="text-muted-foreground">{tool.result}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : callLog?.transcript ? (
                 <div className="space-y-2">
                   {callLog.transcript.split('\n').map((line, idx) => {
                     const isAgent = line.startsWith('Agent:');
@@ -308,14 +352,52 @@ export default function CallDetail() {
                   </p>
                 </div>
               </div>
+              {callLog?.llmTokenUsage && (
+                <div>
+                  <p className="text-sm font-medium mb-2">LLM Token Usage</p>
+                  <div className="grid grid-cols-3 gap-2 text-xs bg-muted p-3 rounded">
+                    <div>
+                      <p className="font-medium text-muted-foreground">Average</p>
+                      <p className="text-lg font-semibold">{(callLog.llmTokenUsage as any).average?.toFixed(1) || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">Total Requests</p>
+                      <p className="text-lg font-semibold">{(callLog.llmTokenUsage as any).num_requests || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-muted-foreground">Total Tokens</p>
+                      <p className="text-lg font-semibold">
+                        {(callLog.llmTokenUsage as any).values?.reduce((a: number, b: number) => a + b, 0)?.toFixed(0) || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {callLog?.callCost && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Cost Breakdown</p>
+                  <div className="space-y-2">
+                    {(callLog.callCost as any).product_costs?.map((product: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded text-xs">
+                        <span className="font-medium capitalize">{product.product.replace(/_/g, ' ')}</span>
+                        <span className="text-muted-foreground">${(product.cost / 100).toFixed(4)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between p-2 bg-primary/10 rounded text-sm font-semibold">
+                      <span>Total Cost</span>
+                      <span>${((callLog.callCost as any).combined_cost / 100).toFixed(4)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               {callLog?.latency && (
                 <div>
-                  <p className="text-sm font-medium mb-2">Latency Metrics</p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  <p className="text-sm font-medium mb-2">Latency Metrics (p50)</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
                     {Object.entries(callLog.latency as any).map(([key, value]: [string, any]) => (
                       <div key={key} className="bg-muted p-2 rounded">
-                        <p className="font-medium capitalize">{key}</p>
-                        <p className="text-muted-foreground">
+                        <p className="font-medium capitalize">{key === 'e2e' ? 'End-to-End' : key.replace(/_/g, ' ')}</p>
+                        <p className="text-lg font-semibold">
                           {value?.p50 ? `${value.p50}ms` : 'N/A'}
                         </p>
                       </div>
