@@ -28,6 +28,13 @@ export default function Campaigns() {
 
   const { data: campaigns, isLoading } = useQuery<Campaign[]>({
     queryKey: ["/api/campaigns"],
+    refetchInterval: (query) => {
+      // Auto-refresh every 2 seconds if there are active campaigns
+      const hasActiveCampaigns = query.state.data?.some(
+        (c: Campaign) => c.status === 'active'
+      );
+      return hasActiveCampaigns ? 2000 : false;
+    },
   });
 
   const { data: agents } = useQuery<Agent[]>({
