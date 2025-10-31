@@ -523,9 +523,9 @@ export function registerRoutes(app: Express) {
         // Start making calls with concurrency limit of 20
         await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
           try {
-            const fromNum = campaign.fromNumber || undefined;
+            const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
             const retellCall = await retellService.createPhoneCall({
-              from_number: fromNum as any,
+              from_number: fromNum,
               to_number: phoneNumber.phoneNumber,
               override_agent_id: agentId,
               metadata: {
@@ -605,9 +605,9 @@ export function registerRoutes(app: Express) {
       await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
         try {
           // Create call in Retell AI
-          const fromNum = campaign.fromNumber || undefined;
+          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
           const retellCall = await retellService.createPhoneCall({
-            from_number: fromNum as any,
+            from_number: fromNum,
             to_number: phoneNumber.phoneNumber,
             override_agent_id: campaign.agentId,
             metadata: {
