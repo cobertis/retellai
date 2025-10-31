@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, PhoneCall, Play, Pause, Loader2 } from "lucide-react";
+import { Plus, PhoneCall, Play, Pause, Loader2, Trash2, StopCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -107,6 +107,68 @@ export default function Campaigns() {
     },
   });
 
+  const stopMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/campaigns/${id}/stop`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Success",
+        description: "Campaign stopped successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to stop campaign",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/campaigns/${id}`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Success",
+        description: "Campaign deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete campaign",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -185,24 +247,44 @@ export default function Campaigns() {
                       {campaign.description || 'No description'}
                     </CardDescription>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => startMutation.mutate(campaign.id)}
-                    disabled={campaign.status === 'active' || startMutation.isPending}
-                    data-testid={`button-start-campaign-${campaign.id}`}
-                  >
+                  <div className="flex items-center gap-2">
                     {campaign.status === 'active' ? (
-                      <>
-                        <Pause className="h-3 w-3 mr-1" />
-                        Active
-                      </>
-                    ) : (
-                      <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => stopMutation.mutate(campaign.id)}
+                        disabled={stopMutation.isPending}
+                        data-testid={`button-stop-campaign-${campaign.id}`}
+                      >
+                        <StopCircle className="h-3 w-3 mr-1" />
+                        Stop
+                      </Button>
+                    ) : campaign.status === 'draft' || campaign.status === 'paused' ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startMutation.mutate(campaign.id)}
+                        disabled={startMutation.isPending}
+                        data-testid={`button-start-campaign-${campaign.id}`}
+                      >
                         <Play className="h-3 w-3 mr-1" />
                         Start
-                      </>
-                    )}
-                  </Button>
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete "${campaign.name}"? This action cannot be undone.`)) {
+                          deleteMutation.mutate(campaign.id);
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-campaign-${campaign.id}`}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
