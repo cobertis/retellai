@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Phone, Clock, DollarSign, TrendingUp, Download, Play } from "lucide-react";
+import { ArrowLeft, Phone, Clock, DollarSign, TrendingUp, Download, Play, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import type { Call, CallLog } from "@shared/schema";
 
@@ -92,17 +92,32 @@ export default function CallDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/calls">
-          <Button variant="ghost" size="sm" data-testid="button-back">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-semibold">Call Details</h1>
-          <p className="text-sm text-muted-foreground font-mono">{call.id}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/calls">
+            <Button variant="ghost" size="sm" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold">Call Details</h1>
+            <p className="text-sm text-muted-foreground font-mono">{call.id}</p>
+          </div>
         </div>
+        {callLog?.publicLogUrl && (
+          <a 
+            href={callLog.publicLogUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            data-testid="link-public-log"
+          >
+            <Button variant="outline" size="sm">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              View Public Log
+            </Button>
+          </a>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
