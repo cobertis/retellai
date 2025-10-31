@@ -179,9 +179,15 @@ export default function Campaigns() {
         return 'secondary';
       case 'paused':
         return 'outline';
+      case 'draft':
+        return 'outline';
       default:
         return 'outline';
     }
+  };
+
+  const getStatusText = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   const getProgress = (campaign: Campaign) => {
@@ -241,8 +247,8 @@ export default function Campaigns() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <CardTitle className="text-lg">{campaign.name}</CardTitle>
-                      <Badge variant={getStatusColor(campaign.status)}>
-                        {campaign.status}
+                      <Badge variant={getStatusColor(campaign.status)} data-testid={`badge-status-${campaign.id}`}>
+                        {getStatusText(campaign.status)}
                       </Badge>
                     </div>
                     <CardDescription>

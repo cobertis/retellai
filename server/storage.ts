@@ -389,7 +389,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async handleCallEnded(campaignId: string, callSuccessful: boolean): Promise<void> {
-    // Atomically update campaign stats when a call ends
+    // Atomically update campaign stats and mark as completed if all calls are done
+    // This is done in a single UPDATE statement to avoid race conditions
     await db
       .update(campaigns)
       .set({
@@ -400,26 +401,19 @@ export class DatabaseStorage implements IStorage {
         failedCalls: !callSuccessful 
           ? sql`COALESCE(${campaigns.failedCalls}, 0) + 1`
           : campaigns.failedCalls,
+        status: sql`CASE 
+          WHEN ${campaigns.status} = 'active' AND (GREATEST(COALESCE(${campaigns.inProgressCalls}, 0) - 1, 0)) = 0 
+          THEN 'completed' 
+          ELSE ${campaigns.status} 
+        END`,
+        completedAt: sql`CASE 
+          WHEN ${campaigns.status} = 'active' AND (GREATEST(COALESCE(${campaigns.inProgressCalls}, 0) - 1, 0)) = 0 
+          THEN NOW() 
+          ELSE ${campaigns.completedAt} 
+        END`,
         updatedAt: new Date(),
       })
       .where(eq(campaigns.id, campaignId));
-
-    // Check if all calls are done and mark campaign as completed
-    const [campaign] = await db
-      .select()
-      .from(campaigns)
-      .where(eq(campaigns.id, campaignId));
-
-    if (campaign && campaign.status === 'active' && campaign.inProgressCalls === 0) {
-      await db
-        .update(campaigns)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(campaigns.id, campaignId));
-    }
   }
 
   async deleteCampaign(id: string): Promise<void> {
