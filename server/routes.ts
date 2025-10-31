@@ -12,6 +12,7 @@ import { z } from "zod";
 import {
   insertAgentSchema,
   insertPhoneListSchema,
+  insertPhoneNumberSchema,
   insertCampaignSchema,
   insertUserSchema,
   loginSchema,
@@ -451,20 +452,108 @@ export function registerRoutes(app: Express) {
   app.post("/api/campaigns", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const validatedData = insertCampaignSchema.parse(req.body);
+      const { agentId, listId, startImmediately } = req.body;
+      
+      if (!agentId || !listId) {
+        return res.status(400).json({ message: "Agent and phone list are required" });
+      }
+
+      // Get agent and list details for campaign name
+      const agent = await storage.getAgent(agentId);
+      const list = await storage.getPhoneList(listId);
+      
+      if (!agent || !list) {
+        return res.status(404).json({ message: "Agent or phone list not found" });
+      }
+
+      // Generate campaign name automatically
+      const campaignName = `${agent.name} - ${list.name}`;
       
       const campaign = await storage.createCampaign(userId, {
-        name: validatedData.name,
-        description: validatedData.description,
-        agentId: validatedData.agentId,
-        listId: validatedData.listId,
-        fromNumber: validatedData.fromNumber,
+        name: campaignName,
+        description: null,
+        agentId,
+        listId,
+        fromNumber: null,
         status: 'draft',
         totalCalls: 0,
         completedCalls: 0,
         failedCalls: 0,
         inProgressCalls: 0,
       });
+
+      // If startImmediately is true, start the campaign right away
+      if (startImmediately) {
+        const phoneNumbers = await storage.getPhoneNumbersByList(listId);
+        
+        if (phoneNumbers.length === 0) {
+          return res.status(400).json({ message: "No phone numbers in list" });
+        }
+
+        await storage.updateCampaignStatus(campaign.id, 'active');
+        await storage.updateCampaignStats(campaign.id, {
+          totalCalls: phoneNumbers.length,
+          startedAt: new Date(),
+        });
+
+        // Start making ALL calls
+        const callPromises = phoneNumbers.map(async (phoneNumber) => {
+          try {
+            const retellCall = await retellService.createPhoneCall({
+              from_number: campaign.fromNumber || undefined,
+              to_number: phoneNumber.phoneNumber,
+              override_agent_id: agentId,
+              metadata: {
+                campaignId: campaign.id,
+                listId,
+                phoneNumberId: phoneNumber.id,
+              },
+            });
+
+            await storage.createCall({
+              id: retellCall.call_id,
+              userId,
+              campaignId: campaign.id,
+              agentId,
+              fromNumber: campaign.fromNumber || null,
+              toNumber: phoneNumber.phoneNumber,
+              callStatus: retellCall.call_status || 'queued',
+              startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
+              endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
+              durationMs: retellCall.duration_ms || null,
+              disconnectionReason: retellCall.disconnection_reason || null,
+            });
+
+            await storage.createCallLog({
+              id: randomUUID(),
+              callId: retellCall.call_id,
+              transcript: null,
+              recordingUrl: null,
+              callSummary: null,
+              callSuccessful: null,
+              userSentiment: null,
+              inVoicemail: null,
+            });
+
+            const currentCampaign = await storage.getCampaign(campaign.id);
+            if (currentCampaign) {
+              await storage.updateCampaignStats(campaign.id, {
+                inProgressCalls: currentCampaign.inProgressCalls + 1,
+              });
+            }
+          } catch (error) {
+            console.error("Error creating call:", error);
+            const currentCampaign = await storage.getCampaign(campaign.id);
+            if (currentCampaign) {
+              await storage.updateCampaignStats(campaign.id, {
+                failedCalls: currentCampaign.failedCalls + 1,
+              });
+            }
+          }
+        });
+
+        await Promise.all(callPromises);
+      }
       
       res.status(201).json(campaign);
     } catch (error: any) {
@@ -497,13 +586,12 @@ export function registerRoutes(app: Express) {
         startedAt: new Date(),
       });
 
-      // Start making calls (in production, this would be a background job)
-      // For now, we'll just create the first few calls as examples
-      const callPromises = phoneNumbers.slice(0, 3).map(async (phoneNumber) => {
+      // Start making ALL calls
+      const callPromises = phoneNumbers.map(async (phoneNumber) => {
         try {
           // Create call in Retell AI
           const retellCall = await retellService.createPhoneCall({
-            from_number: campaign.fromNumber,
+            from_number: campaign.fromNumber || undefined,
             to_number: phoneNumber.phoneNumber,
             override_agent_id: campaign.agentId,
             metadata: {
@@ -519,7 +607,7 @@ export function registerRoutes(app: Express) {
             userId,
             campaignId: id,
             agentId: campaign.agentId,
-            fromNumber: campaign.fromNumber,
+            fromNumber: campaign.fromNumber || null,
             toNumber: phoneNumber.phoneNumber,
             callStatus: retellCall.call_status || 'queued',
             startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,

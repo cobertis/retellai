@@ -19,12 +19,10 @@ import type { Campaign, Agent, PhoneList } from "@shared/schema";
 export default function Campaigns() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [startImmediately, setStartImmediately] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
-    description: "",
     agentId: "",
     listId: "",
-    fromNumber: "",
   });
 
   const { data: campaigns, isLoading } = useQuery<Campaign[]>({
@@ -40,22 +38,22 @@ export default function Campaigns() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      await apiRequest("POST", "/api/campaigns", data);
+    mutationFn: async (data: typeof formData & { startImmediately: boolean }) => {
+      const response = await apiRequest("POST", "/api/campaigns", data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calls"] });
       setIsCreateOpen(false);
       setFormData({
-        name: "",
-        description: "",
         agentId: "",
         listId: "",
-        fromNumber: "",
       });
+      setStartImmediately(false);
       toast({
         title: "Success",
-        description: "Campaign created successfully",
+        description: startImmediately ? "Campaign created and started successfully" : "Campaign created successfully",
       });
     },
     onError: (error: Error) => {
@@ -244,20 +242,10 @@ export default function Campaigns() {
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
             <DialogDescription>
-              Set up a new automated call campaign
+              Select an agent and phone list to create a call campaign
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Campaign Name</Label>
-              <Input
-                id="name"
-                placeholder="Q1 Sales Outreach"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                data-testid="input-campaign-name"
-              />
-            </div>
             <div className="grid gap-2">
               <Label htmlFor="agent">AI Agent</Label>
               <Select
@@ -294,26 +282,18 @@ export default function Campaigns() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="fromNumber">From Number (E.164 format)</Label>
-              <Input
-                id="fromNumber"
-                placeholder="+14155551234"
-                value={formData.fromNumber}
-                onChange={(e) => setFormData({ ...formData, fromNumber: e.target.value })}
-                data-testid="input-from-number"
+            <div className="flex items-center space-x-2 p-4 rounded-md border">
+              <input
+                type="checkbox"
+                id="startImmediately"
+                checked={startImmediately}
+                onChange={(e) => setStartImmediately(e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+                data-testid="checkbox-start-immediately"
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Campaign description..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                data-testid="input-campaign-description"
-              />
+              <Label htmlFor="startImmediately" className="text-sm font-normal cursor-pointer">
+                Start campaign immediately
+              </Label>
             </div>
           </div>
           <DialogFooter>
@@ -321,12 +301,12 @@ export default function Campaigns() {
               Cancel
             </Button>
             <Button
-              onClick={() => createMutation.mutate(formData)}
-              disabled={!formData.name || !formData.agentId || !formData.listId || !formData.fromNumber || createMutation.isPending}
+              onClick={() => createMutation.mutate({ ...formData, startImmediately })}
+              disabled={!formData.agentId || !formData.listId || createMutation.isPending}
               data-testid="button-submit-campaign"
             >
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Campaign
+              {startImmediately ? "Create and Start" : "Create Campaign"}
             </Button>
           </DialogFooter>
         </DialogContent>
