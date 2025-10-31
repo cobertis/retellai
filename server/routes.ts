@@ -236,18 +236,29 @@ export function registerRoutes(app: Express) {
         stream
           .pipe(csvParser())
           .on('data', (row: any) => {
-            phoneNumbers.push({
-              listId: id,
-              phoneNumber: row.phoneNumber || row.phone || row.number,
-              firstName: row.firstName || row.first_name || null,
-              lastName: row.lastName || row.last_name || null,
-              email: row.email || null,
-              metadata: row,
-            });
+            const phoneNumber = row.phoneNumber || row.phone || row.number || row.Phone || row.PhoneNumber;
+            
+            // Only add rows with valid phone numbers
+            if (phoneNumber && phoneNumber.toString().trim()) {
+              phoneNumbers.push({
+                listId: id,
+                phoneNumber: phoneNumber.toString().trim(),
+                firstName: row.firstName || row.first_name || row.FirstName || null,
+                lastName: row.lastName || row.last_name || row.LastName || null,
+                email: row.email || row.Email || null,
+                metadata: row,
+              });
+            }
           })
           .on('end', resolve)
           .on('error', reject);
       });
+
+      if (phoneNumbers.length === 0) {
+        return res.status(400).json({ 
+          message: "No valid phone numbers found in the CSV file. Make sure your CSV has a column named 'phoneNumber', 'phone', or 'number'." 
+        });
+      }
 
       // Save phone numbers
       await storage.createPhoneNumbers(phoneNumbers);
