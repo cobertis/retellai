@@ -37,7 +37,7 @@ export interface IStorage {
   updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User | undefined>;
 
   // Agent operations
-  createAgent(userId: string, agent: InsertAgent): Promise<Agent>;
+  createAgent(userId: string, agent: InsertAgent & { id?: string }): Promise<Agent>;
   getAgent(id: string): Promise<Agent | undefined>;
   listAgents(userId: string): Promise<Agent[]>;
   deleteAgent(id: string): Promise<void>;
@@ -197,7 +197,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Agent operations
-  async createAgent(userId: string, agentData: InsertAgent): Promise<Agent> {
+  async createAgent(userId: string, agentData: InsertAgent & { id?: string }): Promise<Agent> {
     const [agent] = await db
       .insert(agents)
       .values({ ...agentData, userId })

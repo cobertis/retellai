@@ -8,49 +8,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Users, Edit, Trash2, Loader2 } from "lucide-react";
+import { Plus, Users, Trash2, Loader2, Link as LinkIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import type { Agent } from "@shared/schema";
 
 export default function Agents() {
   const { toast } = useToast();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    voiceId: "11labs-Adrian",
-    language: "en-US",
-    responseEngineType: "retell-llm",
-    responsiveness: 1,
-    interruptionSensitivity: 1,
-    generalPrompt: "",
-  });
+  const [isConnectOpen, setIsConnectOpen] = useState(false);
+  const [agentId, setAgentId] = useState("");
 
   const { data: agents, isLoading } = useQuery<Agent[]>({
     queryKey: ["/api/agents"],
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      await apiRequest("POST", "/api/agents", data);
+  const connectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", "/api/agents/connect", { agentId: id.trim() });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
-      setIsCreateOpen(false);
-      setFormData({
-        name: "",
-        voiceId: "11labs-Adrian",
-        language: "en-US",
-        responseEngineType: "retell-llm",
-        responsiveness: 1,
-        interruptionSensitivity: 1,
-        generalPrompt: "",
-      });
+      setIsConnectOpen(false);
+      setAgentId("");
       toast({
         title: "Success",
-        description: "Agent created successfully",
+        description: "Agent connected successfully",
       });
     },
     onError: (error: Error) => {
@@ -67,7 +49,7 @@ export default function Agents() {
       }
       toast({
         title: "Error",
-        description: error.message || "Failed to create agent",
+        description: error.message || "Failed to connect agent",
         variant: "destructive",
       });
     },
@@ -81,7 +63,7 @@ export default function Agents() {
       queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
       toast({
         title: "Success",
-        description: "Agent deleted successfully",
+        description: "Agent removed successfully",
       });
     },
     onError: (error: Error) => {
@@ -98,7 +80,7 @@ export default function Agents() {
       }
       toast({
         title: "Error",
-        description: error.message || "Failed to delete agent",
+        description: error.message || "Failed to remove agent",
         variant: "destructive",
       });
     },
@@ -110,12 +92,12 @@ export default function Agents() {
         <div>
           <h1 className="text-2xl font-semibold mb-1">AI Agents</h1>
           <p className="text-sm text-muted-foreground">
-            Create and manage your AI voice agents
+            Connect your existing Retell AI agents
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} data-testid="button-create-agent">
-          <Plus className="h-4 w-4 mr-2" />
-          Create Agent
+        <Button onClick={() => setIsConnectOpen(true)} data-testid="button-connect-agent">
+          <LinkIcon className="h-4 w-4 mr-2" />
+          Connect Agent
         </Button>
       </div>
 
@@ -137,13 +119,13 @@ export default function Agents() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-1">No agents yet</h3>
+            <h3 className="text-lg font-semibold mb-1">No agents connected</h3>
             <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-              Create your first AI voice agent to start making automated calls
+              Connect your existing Retell AI agent to start making automated calls
             </p>
-            <Button onClick={() => setIsCreateOpen(true)} data-testid="button-create-first-agent">
-              <Plus className="h-4 w-4 mr-2" />
-              Create Agent
+            <Button onClick={() => setIsConnectOpen(true)} data-testid="button-connect-first-agent">
+              <LinkIcon className="h-4 w-4 mr-2" />
+              Connect Agent
             </Button>
           </CardContent>
         </Card>
@@ -156,7 +138,7 @@ export default function Agents() {
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-lg truncate">{agent.name}</CardTitle>
                     <CardDescription className="truncate font-mono text-xs mt-1">
-                      ID: {agent.id}
+                      {agent.id}
                     </CardDescription>
                   </div>
                 </div>
@@ -192,84 +174,41 @@ export default function Agents() {
         </div>
       )}
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={isConnectOpen} onOpenChange={setIsConnectOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create AI Agent</DialogTitle>
+            <DialogTitle>Connect Retell AI Agent</DialogTitle>
             <DialogDescription>
-              Configure your AI voice agent with custom voice and behavior settings
+              Enter the Agent ID from your Retell AI dashboard
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Agent Name</Label>
+              <Label htmlFor="agent-id">Agent ID</Label>
               <Input
-                id="name"
-                placeholder="Sales Agent"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                data-testid="input-agent-name"
+                id="agent-id"
+                placeholder="agent_xxxxxxxxxxxxxxxxxx"
+                value={agentId}
+                onChange={(e) => setAgentId(e.target.value)}
+                className="font-mono text-sm"
+                data-testid="input-connect-agent-id"
               />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="voiceId">Voice</Label>
-                <Select
-                  value={formData.voiceId}
-                  onValueChange={(value) => setFormData({ ...formData, voiceId: value })}
-                >
-                  <SelectTrigger data-testid="select-voice">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="11labs-Adrian">Adrian (Male)</SelectItem>
-                    <SelectItem value="11labs-Dorothy">Dorothy (Female)</SelectItem>
-                    <SelectItem value="11labs-Rachel">Rachel (Female)</SelectItem>
-                    <SelectItem value="11labs-Antoni">Antoni (Male)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="language">Language</Label>
-                <Select
-                  value={formData.language}
-                  onValueChange={(value) => setFormData({ ...formData, language: value })}
-                >
-                  <SelectTrigger data-testid="select-language">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en-US">English (US)</SelectItem>
-                    <SelectItem value="es-ES">Spanish</SelectItem>
-                    <SelectItem value="fr-FR">French</SelectItem>
-                    <SelectItem value="de-DE">German</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="prompt">General Prompt</Label>
-              <Textarea
-                id="prompt"
-                placeholder="You are a helpful sales agent calling to introduce our product..."
-                value={formData.generalPrompt}
-                onChange={(e) => setFormData({ ...formData, generalPrompt: e.target.value })}
-                rows={4}
-                data-testid="input-agent-prompt"
-              />
+              <p className="text-xs text-muted-foreground">
+                You can find the Agent ID in your Retell AI dashboard
+              </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+            <Button variant="outline" onClick={() => setIsConnectOpen(false)}>
               Cancel
             </Button>
             <Button
-              onClick={() => createMutation.mutate(formData)}
-              disabled={!formData.name || createMutation.isPending}
-              data-testid="button-submit-agent"
+              onClick={() => connectMutation.mutate(agentId)}
+              disabled={!agentId.trim() || connectMutation.isPending}
+              data-testid="button-submit-connect-agent"
             >
-              {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Agent
+              {connectMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Connect Agent
             </Button>
           </DialogFooter>
         </DialogContent>

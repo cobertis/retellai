@@ -130,6 +130,44 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.post("/api/agents/connect", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const { agentId } = z.object({
+        agentId: z.string().min(1),
+      }).parse(req.body);
+
+      // Get agent details from Retell AI
+      const retellAgent = await retellService.getAgent(agentId);
+
+      // Check if agent already exists in database
+      const existingAgent = await storage.getAgent(agentId);
+      if (existingAgent) {
+        return res.status(400).json({ message: "Agent already connected" });
+      }
+
+      // Store in our database
+      const agent = await storage.createAgent(userId, {
+        id: retellAgent.agent_id,
+        name: retellAgent.agent_name || "Unnamed Agent",
+        voiceId: retellAgent.voice_id || "default",
+        language: retellAgent.language || "en-US",
+        responseEngineType: retellAgent.response_engine?.type || "retell-llm",
+        generalPrompt: retellAgent.general_prompt || null,
+        responsiveness: retellAgent.responsiveness || 1,
+        interruptionSensitivity: retellAgent.interruption_sensitivity || 1,
+        llmId: retellAgent.llm_id || null,
+        generalTools: retellAgent.general_tools || null,
+        metadata: retellAgent.metadata || null,
+      });
+
+      res.status(201).json(agent);
+    } catch (error: any) {
+      console.error("Error connecting agent:", error);
+      res.status(400).json({ message: error.message || "Failed to connect agent. Make sure the Agent ID is correct." });
+    }
+  });
+
   app.post("/api/agents", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
