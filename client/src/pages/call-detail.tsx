@@ -352,59 +352,68 @@ export default function CallDetail() {
                   </p>
                 </div>
               </div>
-              {callLog?.llmTokenUsage && (
-                <div>
-                  <p className="text-sm font-medium mb-2">LLM Token Usage</p>
-                  <div className="grid grid-cols-3 gap-2 text-xs bg-muted p-3 rounded">
-                    <div>
-                      <p className="font-medium text-muted-foreground">Average</p>
-                      <p className="text-lg font-semibold">{(callLog.llmTokenUsage as any).average?.toFixed(1) || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-muted-foreground">Total Requests</p>
-                      <p className="text-lg font-semibold">{(callLog.llmTokenUsage as any).num_requests || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-muted-foreground">Total Tokens</p>
-                      <p className="text-lg font-semibold">
-                        {(callLog.llmTokenUsage as any).values?.reduce((a: number, b: number) => a + b, 0)?.toFixed(0) || 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {callLog?.callCost && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Cost Breakdown</p>
-                  <div className="space-y-2">
-                    {(callLog.callCost as any).product_costs?.map((product: any, idx: number) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded text-xs">
-                        <span className="font-medium capitalize">{product.product.replace(/_/g, ' ')}</span>
-                        <span className="text-muted-foreground">${(product.cost / 100).toFixed(4)}</span>
+              {callLog?.llmTokenUsage && (() => {
+                const tokenUsage = callLog.llmTokenUsage as { average?: number; num_requests?: number; values?: number[] };
+                return (
+                  <div>
+                    <p className="text-sm font-medium mb-2">LLM Token Usage</p>
+                    <div className="grid grid-cols-3 gap-2 text-xs bg-muted p-3 rounded">
+                      <div>
+                        <p className="font-medium text-muted-foreground">Average</p>
+                        <p className="text-lg font-semibold">{tokenUsage.average?.toFixed(1) || 'N/A'}</p>
                       </div>
-                    ))}
-                    <div className="flex items-center justify-between p-2 bg-primary/10 rounded text-sm font-semibold">
-                      <span>Total Cost</span>
-                      <span>${((callLog.callCost as any).combined_cost / 100).toFixed(4)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {callLog?.latency && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Latency Metrics (p50)</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                    {Object.entries(callLog.latency as any).map(([key, value]: [string, any]) => (
-                      <div key={key} className="bg-muted p-2 rounded">
-                        <p className="font-medium capitalize">{key === 'e2e' ? 'End-to-End' : key.replace(/_/g, ' ')}</p>
+                      <div>
+                        <p className="font-medium text-muted-foreground">Total Requests</p>
+                        <p className="text-lg font-semibold">{tokenUsage.num_requests || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-muted-foreground">Total Tokens</p>
                         <p className="text-lg font-semibold">
-                          {value?.p50 ? `${value.p50}ms` : 'N/A'}
+                          {tokenUsage.values?.reduce((a: number, b: number) => a + b, 0)?.toFixed(0) || 'N/A'}
                         </p>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
+              {callLog?.callCost && (() => {
+                const costData = callLog.callCost as { product_costs?: Array<{product: string; cost: number}>; combined_cost?: number };
+                return (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Cost Breakdown</p>
+                    <div className="space-y-2">
+                      {costData.product_costs?.map((product, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded text-xs">
+                          <span className="font-medium capitalize">{product.product.replace(/_/g, ' ')}</span>
+                          <span className="text-muted-foreground">${(product.cost / 100).toFixed(4)}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between p-2 bg-primary/10 rounded text-sm font-semibold">
+                        <span>Total Cost</span>
+                        <span>${((costData.combined_cost || 0) / 100).toFixed(4)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {callLog?.latency && (() => {
+                const latencyData = callLog.latency as Record<string, { p50?: number }>;
+                return (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Latency Metrics (p50)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                      {Object.entries(latencyData).map(([key, value]) => (
+                        <div key={key} className="bg-muted p-2 rounded">
+                          <p className="font-medium capitalize">{key === 'e2e' ? 'End-to-End' : key.replace(/_/g, ' ')}</p>
+                          <p className="text-lg font-semibold">
+                            {value?.p50 ? `${value.p50}ms` : 'N/A'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
