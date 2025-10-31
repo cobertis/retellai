@@ -58,6 +58,7 @@ export const agents = pgTable("agents", {
 
 export const insertAgentSchema = createInsertSchema(agents).omit({
   id: true,
+  userId: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -80,6 +81,7 @@ export const phoneLists = pgTable("phone_lists", {
 
 export const insertPhoneListSchema = createInsertSchema(phoneLists).omit({
   id: true,
+  userId: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -133,6 +135,7 @@ export const campaigns = pgTable("campaigns", {
 
 export const insertCampaignSchema = createInsertSchema(campaigns).omit({
   id: true,
+  userId: true,
   createdAt: true,
   updatedAt: true,
 });
