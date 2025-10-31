@@ -722,10 +722,57 @@ export function registerRoutes(app: Express) {
   app.get("/api/calls/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const call = await storage.getCall(id);
+      let call = await storage.getCall(id);
       
       if (!call) {
         return res.status(404).json({ message: "Call not found" });
+      }
+      
+      // If call is missing critical data, sync from Retell API
+      const needsSync = !call.startTimestamp || !call.endTimestamp || !call.durationMs;
+      if (needsSync && call.id) {
+        try {
+          const retellCall = await retellService.getCall(call.id);
+          
+          // Update call with data from Retell
+          if (retellCall) {
+            // Update call status and times
+            await storage.updateCall(call.id, {
+              callStatus: retellCall.call_status || call.callStatus,
+              startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : call.startTimestamp,
+              endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : call.endTimestamp,
+              durationMs: retellCall.duration_ms || call.durationMs,
+              disconnectionReason: retellCall.disconnection_reason || call.disconnectionReason,
+            });
+            
+            // Update call log if available
+            if (retellCall.transcript || retellCall.call_analysis) {
+              await storage.updateCallLog(call.id, {
+                transcript: retellCall.transcript || null,
+                transcriptObject: retellCall.transcript_object || null,
+                transcriptWithToolCalls: retellCall.transcript_with_tool_calls || null,
+                recordingUrl: retellCall.recording_url || null,
+                recordingMultiChannelUrl: retellCall.recording_multi_channel_url || null,
+                publicLogUrl: retellCall.public_log_url || null,
+                callAnalysis: retellCall.call_analysis || null,
+                callSummary: retellCall.call_analysis?.call_summary || null,
+                callSuccessful: retellCall.call_analysis?.call_successful ?? null,
+                userSentiment: retellCall.call_analysis?.user_sentiment || null,
+                inVoicemail: retellCall.call_analysis?.in_voicemail ?? null,
+                customAnalysisData: retellCall.call_analysis?.custom_analysis_data || null,
+                callCost: retellCall.call_cost || null,
+                llmTokenUsage: retellCall.llm_token_usage || null,
+                latency: retellCall.latency || null,
+              });
+            }
+            
+            // Fetch updated call
+            call = await storage.getCall(id);
+          }
+        } catch (syncError: any) {
+          console.error('Error syncing call from Retell:', syncError);
+          // Continue with existing data even if sync fails
+        }
       }
       
       res.json(call);

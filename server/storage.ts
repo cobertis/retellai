@@ -82,6 +82,7 @@ export interface IStorage {
   listCalls(userId: string): Promise<Call[]>;
   getActiveCalls(userId: string): Promise<Call[]>;
   updateCallStatus(id: string, status: string, endTimestamp?: Date, durationMs?: number, disconnectionReason?: string): Promise<void>;
+  updateCall(id: string, data: Partial<Omit<Call, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void>;
 
   // Call Log operations
   createCallLog(log: InsertCallLog): Promise<void>;
@@ -452,6 +453,13 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(calls)
       .set(updateData)
+      .where(eq(calls.id, id));
+  }
+
+  async updateCall(id: string, data: Partial<Omit<Call, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void> {
+    await db
+      .update(calls)
+      .set({ ...data, updatedAt: new Date() })
       .where(eq(calls.id, id));
   }
 
