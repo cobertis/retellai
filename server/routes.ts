@@ -655,6 +655,59 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Stop/pause a campaign
+  app.post("/api/campaigns/:id/stop", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      if (campaign.status !== 'active') {
+        return res.status(400).json({ message: "Campaign is not active" });
+      }
+
+      await storage.stopCampaign(id);
+
+      const updatedCampaign = await storage.getCampaign(id);
+      res.json(updatedCampaign);
+    } catch (error: any) {
+      console.error("Error stopping campaign:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete a campaign
+  app.delete("/api/campaigns/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.deleteCampaign(id);
+
+      res.json({ message: "Campaign deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting campaign:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Call endpoints
   app.get("/api/calls", isAuthenticated, async (req: Request, res: Response) => {
     try {
