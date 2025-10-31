@@ -103,13 +103,9 @@ export function AppSidebar() {
                 ? `${user.firstName} ${user.lastName}` 
                 : user?.email || "User"}
             </p>
-            <a
-              href="/api/logout"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="link-logout"
-            >
-              Log out
-            </a>
+            <p className="text-xs text-muted-foreground truncate">
+              {user?.email}
+            </p>
           </div>
         </div>
       </SidebarFooter>

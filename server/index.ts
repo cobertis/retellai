@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { setupAuth } from "./replitAuth";
+import { setupAuth } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
@@ -49,7 +49,7 @@ app.use((req, res, next) => {
 
 (async () => {
   // Setup authentication
-  await setupAuth(app);
+  setupAuth(app);
   
   // Register API routes
   registerRoutes(app);

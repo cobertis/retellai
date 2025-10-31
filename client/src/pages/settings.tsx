@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -5,9 +6,19 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Settings as SettingsIcon, User, Key, Bell } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Settings() {
   const { user } = useAuth();
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/logout", undefined);
+    },
+    onSuccess: () => {
+      window.location.href = "/login";
+    },
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -128,10 +139,13 @@ export default function Settings() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" asChild data-testid="button-logout">
-              <a href="/api/logout">
-                Sign Out
-              </a>
+            <Button 
+              variant="outline" 
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              data-testid="button-logout"
+            >
+              {logoutMutation.isPending ? "Signing Out..." : "Sign Out"}
             </Button>
           </CardContent>
         </Card>

@@ -1,7 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "./storage";
 import { retellService } from "./retellService";
-import { isAuthenticated } from "./replitAuth";
+import { isAuthenticated } from "./auth";
+import passport from "passport";
+import bcrypt from "bcrypt";
 import multer from "multer";
 import csvParser from "csv-parser";
 import { Readable } from "stream";
@@ -11,16 +13,79 @@ import {
   insertAgentSchema,
   insertPhoneListSchema,
   insertCampaignSchema,
+  insertUserSchema,
+  loginSchema,
 } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 function getUserId(req: Request): string {
   const user = req.user as any;
-  return user.claims.sub;
+  return user.id;
 }
 
 export function registerRoutes(app: Express) {
+  // Auth endpoints
+  app.post("/api/register", async (req: Request, res: Response) => {
+    try {
+      const { email, password, firstName, lastName } = insertUserSchema.parse(req.body);
+      
+      // Check if user exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "User already exists" });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Create user
+      const user = await storage.createUser(email, hashedPassword, firstName || undefined, lastName || undefined);
+      
+      // Log them in
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Error logging in" });
+        }
+        res.status(201).json(user);
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/login", (req: Request, res: Response, next) => {
+    try {
+      loginSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: "Invalid email or password format" });
+    }
+
+    passport.authenticate('local', (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Internal server error" });
+      }
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "Incorrect email or password" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Error logging in" });
+        }
+        res.json(user);
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/logout", (req: Request, res: Response) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Error logging out" });
+      }
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
   // User info endpoint
   app.get("/api/user", isAuthenticated, async (req: Request, res: Response) => {
     try {

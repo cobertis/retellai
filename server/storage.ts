@@ -28,8 +28,11 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
-  // User operations - Required for Replit Auth
+  // User operations - Local Auth
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserWithPassword(email: string): Promise<any | undefined>;
+  createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
 
   // Agent operations
@@ -86,8 +89,56 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await db.select({
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      profileImageUrl: users.profileImageUrl,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    }).from(users).where(eq(users.id, id));
     return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select({
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      profileImageUrl: users.profileImageUrl,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    }).from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async getUserWithPassword(email: string): Promise<any | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        email,
+        password,
+        firstName: firstName || null,
+        lastName: lastName || null,
+      })
+      .returning();
+    
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profileImageUrl: user.profileImageUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
@@ -102,7 +153,16 @@ export class DatabaseStorage implements IStorage {
         },
       })
       .returning();
-    return user;
+    
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profileImageUrl: user.profileImageUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   // Agent operations
