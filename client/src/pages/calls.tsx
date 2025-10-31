@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,19 +8,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Search, ExternalLink, Clock, TrendingUp } from "lucide-react";
+import { Phone, Search, ExternalLink, Clock, TrendingUp, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import type { Call } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'completed':
+    case 'ended':
       return 'default';
     case 'failed':
+    case 'error':
       return 'destructive';
     case 'in_progress':
+    case 'ongoing':
       return 'secondary';
     case 'queued':
+    case 'registered':
       return 'outline';
     default:
       return 'outline';
@@ -41,12 +46,53 @@ export default function Calls() {
 
   const { data: calls, isLoading } = useQuery<Call[]>({
     queryKey: ["/api/calls"],
+    refetchInterval: 5000, // Refetch every 5 seconds
   });
+
+  // Sync call status from Retell API
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', '/api/calls/sync-status');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/calls'] });
+    },
+  });
+
+  // Auto-sync when there are active calls using stable interval
+  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const hasActiveCalls = calls?.some(call => 
+      ['registered', 'ongoing', 'in_progress', 'queued'].includes(call.callStatus)
+    );
+
+    // Start interval if we have active calls and no interval running
+    if (hasActiveCalls && !syncIntervalRef.current && !syncMutation.isPending) {
+      syncIntervalRef.current = setInterval(() => {
+        syncMutation.mutate();
+      }, 10000); // Sync with Retell API every 10 seconds
+    }
+
+    // Clear interval if no active calls
+    if (!hasActiveCalls && syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    };
+  }, [calls, syncMutation.isPending]);
 
   const filteredCalls = calls?.filter((call) => {
     const matchesSearch = 
       call.toNumber.includes(search) ||
-      call.fromNumber.includes(search) ||
+      (call.fromNumber && call.fromNumber.includes(search)) ||
       call.id.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || call.callStatus === statusFilter;
     return matchesSearch && matchesStatus;
@@ -147,7 +193,7 @@ export default function Calls() {
                       <TableCell className="text-sm text-muted-foreground">
                         {call.startTimestamp 
                           ? format(new Date(call.startTimestamp), 'MMM dd, HH:mm')
-                          : format(new Date(call.createdAt), 'MMM dd, HH:mm')
+                          : (call.createdAt ? format(new Date(call.createdAt), 'MMM dd, HH:mm') : '-')
                         }
                       </TableCell>
                       <TableCell className="text-right">

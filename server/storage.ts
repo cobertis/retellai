@@ -80,6 +80,7 @@ export interface IStorage {
   createCall(call: InsertCall): Promise<Call>;
   getCall(id: string): Promise<Call | undefined>;
   listCalls(userId: string): Promise<Call[]>;
+  getActiveCalls(userId: string): Promise<Call[]>;
   updateCallStatus(id: string, status: string, endTimestamp?: Date, durationMs?: number, disconnectionReason?: string): Promise<void>;
 
   // Call Log operations
@@ -420,6 +421,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(calls.userId, userId))
       .orderBy(desc(calls.createdAt))
       .limit(100);
+  }
+
+  async getActiveCalls(userId: string): Promise<Call[]> {
+    return await db
+      .select()
+      .from(calls)
+      .where(
+        and(
+          eq(calls.userId, userId),
+          sql`${calls.callStatus} IN ('registered', 'ongoing', 'in_progress', 'queued')`
+        )
+      )
+      .orderBy(desc(calls.createdAt));
   }
 
   async updateCallStatus(

@@ -21,6 +21,7 @@ export default function Campaigns() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [startImmediately, setStartImmediately] = useState(false);
   const [formData, setFormData] = useState({
+    name: "",
     agentId: "",
     listId: "",
   });
@@ -47,6 +48,7 @@ export default function Campaigns() {
       queryClient.invalidateQueries({ queryKey: ["/api/calls"] });
       setIsCreateOpen(false);
       setFormData({
+        name: "",
         agentId: "",
         listId: "",
       });
@@ -324,10 +326,20 @@ export default function Campaigns() {
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
             <DialogDescription>
-              Select an agent and phone list to create a call campaign
+              Create a call campaign with a custom name, agent, and phone list
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Campaign Name (Optional)</Label>
+              <Input
+                id="name"
+                placeholder="Leave empty to auto-generate from agent and list names"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                data-testid="input-campaign-name"
+              />
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="agent">AI Agent</Label>
               <Select

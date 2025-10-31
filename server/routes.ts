@@ -476,7 +476,7 @@ export function registerRoutes(app: Express) {
   app.post("/api/campaigns", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const { agentId, listId, startImmediately } = req.body;
+      const { name, agentId, listId, startImmediately } = req.body;
       
       if (!agentId || !listId) {
         return res.status(400).json({ message: "Agent and phone list are required" });
@@ -490,8 +490,8 @@ export function registerRoutes(app: Express) {
         return res.status(404).json({ message: "Agent or phone list not found" });
       }
 
-      // Generate campaign name automatically
-      const campaignName = `${agent.name} - ${list.name}`;
+      // Use custom name if provided, otherwise generate automatically
+      const campaignName = name?.trim() || `${agent.name} - ${list.name}`;
       
       const campaign = await storage.createCampaign(userId, {
         name: campaignName,
@@ -623,7 +623,7 @@ export function registerRoutes(app: Express) {
             userId,
             campaignId: id,
             agentId: campaign.agentId,
-            fromNumber: campaign.fromNumber || null,
+            fromNumber: fromNum,
             toNumber: phoneNumber.phoneNumber,
             callStatus: retellCall.call_status || 'queued',
             startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
@@ -745,6 +745,99 @@ export function registerRoutes(app: Express) {
       
       res.json(log);
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get complete call details from Retell API
+  app.get("/api/calls/:id/retell-details", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      
+      // Get local call data
+      const localCall = await storage.getCall(id);
+      if (!localCall) {
+        return res.status(404).json({ message: "Call not found in local database" });
+      }
+
+      // Security: Verify call belongs to authenticated user
+      if (localCall.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Get data from Retell API
+      const retellCall = await retellService.getCall(id);
+
+      // Get all available calls list from Retell (for context)
+      const allRetellCalls = await retellService.listCalls();
+
+      // Combine all information
+      const completeData = {
+        localDatabase: localCall,
+        retellApi: retellCall,
+        retellCallsList: allRetellCalls,
+        metadata: {
+          fetchedAt: new Date().toISOString(),
+          source: 'Combined from local DB and Retell API'
+        }
+      };
+
+      res.json(completeData);
+    } catch (error: any) {
+      console.error('Error fetching complete call details:', error);
+      res.status(500).json({ 
+        message: error.message,
+        error: error.toString()
+      });
+    }
+  });
+
+  // Sync call status from Retell API
+  app.post("/api/calls/sync-status", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      
+      // Get all active/in-progress calls from our database
+      const activeCalls = await storage.getActiveCalls(userId);
+      
+      if (activeCalls.length === 0) {
+        return res.json({ message: "No active calls to sync", synced: 0 });
+      }
+
+      let synced = 0;
+      let errors = 0;
+
+      // Sync each call with Retell API
+      for (const call of activeCalls) {
+        try {
+          const retellCall = await retellService.getCall(call.id);
+          
+          // Update call status if changed
+          if (retellCall.call_status && retellCall.call_status !== call.callStatus) {
+            await storage.updateCallStatus(
+              call.id,
+              retellCall.call_status,
+              retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : undefined,
+              retellCall.duration_ms,
+              retellCall.disconnection_reason
+            );
+            synced++;
+          }
+        } catch (error) {
+          console.error(`Error syncing call ${call.id}:`, error);
+          errors++;
+        }
+      }
+
+      res.json({ 
+        message: `Synced ${synced} calls`,
+        synced,
+        errors,
+        total: activeCalls.length
+      });
+    } catch (error: any) {
+      console.error('Error syncing call status:', error);
       res.status(500).json({ message: error.message });
     }
   });
