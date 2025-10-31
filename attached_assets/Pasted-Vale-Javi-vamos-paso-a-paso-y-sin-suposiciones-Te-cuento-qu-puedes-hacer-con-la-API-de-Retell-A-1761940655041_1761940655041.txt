@@ -1,0 +1,371 @@
+Vale Javi, vamos paso a paso y sin suposiciones. Te cuento **qué puedes hacer con la API de Retell AI en tu propio CRM**, **qué función sirve para qué**, y **cómo integrarlo con comandos y ejemplos listos para copiar/pegar**.
+
+---
+
+# Qué puedes construir con Retell AI en tu CRM
+
+* **Agentes de voz** que llaman o reciben llamadas, con voz natural, memoria de la llamada, transcripción, grabación y control del flujo. ([docs.retellai.com][1])
+* **Llamadas salientes (outbound)** por API (campañas, recalls, “no-shows”). ([docs.retellai.com][2])
+* **Llamadas web (WebRTC)** embebidas en tu app/portal (sin teléfono físico). ([docs.retellai.com][3])
+* **Función de “function calling / tools”** para que el agente ejecute acciones en tu backend: agendar, transferir, terminar llamada, consultar tu base, enviar SMS, etc. ([docs.retellai.com][4])
+* **Webhooks en tiempo real** para recibir eventos de las llamadas (inicio, fin, análisis, transcripción, métricas). ([docs.retellai.com][5])
+* **Telefónica BYO (SIP)** con Twilio/Vonage u otros (usas tus números). ([docs.retellai.com][6])
+* **Widget de chat/callback** embebible con “public keys” (sin exponer tu API key). ([docs.retellai.com][7])
+* **SDKs oficiales (Node/Python)** para simplificar llamadas a la API. ([docs.retellai.com][8])
+* **Gestión/consulta de llamadas** (listar, obtener detalles, tokens, transcripción, etc.). ([docs.retellai.com][9])
+
+---
+
+# Mapa de funciones (qué es cada cosa y para qué sirve)
+
+1. **Agents (Agentes) + Response Engine**
+   Creas un agente asignándole voz y “motor de respuesta” (tu LLM o el de Retell). Ese agente es el que responde en las llamadas. ([docs.retellai.com][10])
+
+2. **Create Phone Call**
+   Endpoint para **iniciar llamadas salientes** a un número. Útil para campañas desde tu CRM (records → call). ([docs.retellai.com][2])
+
+3. **Create Web Call**
+   Crea una “sala” WebRTC y te devuelve un **access_token** para que tu frontend se conecte por micrófono/altavoz (ideal para botón “Llamar ahora” dentro del CRM). ([docs.retellai.com][3])
+
+4. **Function Calling / Custom Functions (Tools)**
+   Describes funciones que tu agente **puede invocar** durante la conversación. Por ejemplo:
+
+   * `book_appointment_cal` → agendar en tu Cal.com
+   * `check_availability_cal` → consultar disponibilidad
+   * `send_sms` → enviar SMS por tu pasarela
+   * `transfer_call` → transferencia a humano/supervisor
+   * `end_call` → terminar conversación
+     Retell orquesta el JSON con argumentos y tu backend **ejecuta**. ([docs.retellai.com][4])
+
+5. **Webhooks**
+   URL de tu backend donde Retell **empuja eventos**: “call.started”, “call.ended”, “call.analyzed”, etc. Con eso guardas transcript, grabación, métricas, outcomes en tu CRM **en tiempo real**. ([docs.retellai.com][5])
+
+6. **Telephony (SIP) con tus números**
+   Conectas tu carrier (Twilio/Vonage) vía SIP trunking: llamadas entrantes/salientes pasan por tu número, Retell hace la IA. ([docs.retellai.com][6])
+
+7. **Widget de Chat/Callback + Public Keys**
+   Script embebible para poner un chat agent o un callback agent en tu web, autenticado con **publicKey** (seguro para frontend). ([docs.retellai.com][7])
+
+8. **Call Logs API (Get/List Calls)**
+   Trae detalles post-llamada: transcript, recording URL, tiempos, etc. Útil para dashboards QA. ([docs.retellai.com][11])
+
+---
+
+# Integración paso a paso (inexperto-friendly)
+
+## 0) Preparación (API keys y proyecto)
+
+1. Crea un **API Key** en el dashboard de Retell. Guárdalo como variable de entorno. ([docs.retellai.com][12])
+2. Prepara un proyecto Node.js en tu servidor Ubuntu (el stack que ya manejas con PM2).
+
+**Comandos (Ubuntu):**
+
+```bash
+# 0. Requisitos
+sudo apt-get update -y
+sudo apt-get install -y git curl build-essential
+
+# 1. Directorio del servicio
+mkdir -p /opt/retell-crm && cd /opt/retell-crm
+
+# 2. Inicializa proyecto
+npm init -y
+
+# 3. Instala SDK y Express
+npm install retell-sdk express body-parser cors
+
+# 4. Crea archivo de entorno
+cat > .env << 'EOF'
+RETELL_API_KEY=pon_aqui_tu_api_key_de_retell
+PORT=8088
+EOF
+```
+
+## 1) Backend básico (Express + Webhook + Funciones)
+
+Crea `index.js` con:
+
+```bash
+cat > index.js << 'EOF'
+import 'dotenv/config';
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import { Retell } from 'retell-sdk';
+
+const app = express();
+app.use(cors());
+app.use(bodyParser.json());
+
+// 1) Cliente Retell
+const retell = new Retell({ apiKey: process.env.RETELL_API_KEY });
+
+// 2) Webhook de llamadas (Recibe eventos en tiempo real)
+app.post('/retell/webhook', async (req, res) => {
+  // TIP: puedes validar firma si Retell la incluye en headers; y usar API keys para proteger.
+  const event = req.body;
+
+  // Guarda en tu DB (pseudo)
+  // await db.save('retell_events', event);
+
+  // Ejemplo de eventos esperables: call.started, call.ended, call.analyzed...
+  // console.log para pruebas:
+  console.log('RETELL EVENT:', event?.type || 'unknown', event?.data?.call_id);
+
+  res.status(200).json({ ok: true });
+});
+
+// 3) Endpoint de tu CRM para iniciar una llamada (outbound)
+app.post('/crm/make-call', async (req, res) => {
+  try {
+    const { phoneNumber, agentId } = req.body;
+    const call = await retell.calls.createPhoneCall({
+      to_number: phoneNumber,
+      agent_id: agentId, // El ID de agente creado en Retell
+      // ...otros campos opcionales (caller_id si usas SIP BYO, metadata, etc.)
+    });
+    res.json(call);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e?.message || 'Error creando la llamada' });
+  }
+});
+
+// 4) Endpoint para crear una Web Call (para tu front WebRTC)
+app.post('/crm/create-web-call', async (req, res) => {
+  try {
+    const { agentId } = req.body;
+    const room = await retell.calls.createWebCall({
+      agent_id: agentId,
+    });
+    res.json(room); // incluye access_token y call_id
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e?.message || 'Error creando web call' });
+  }
+});
+
+app.listen(process.env.PORT, () => {
+  console.log('CRM Retell bridge listening on', process.env.PORT);
+});
+EOF
+```
+
+Inicia con PM2:
+
+```bash
+npm pkg set type=module
+npx pm2 start index.js --name retell-crm
+npx pm2 save
+```
+
+* **Create Phone Call** que usamos arriba: dispara llamadas salientes. ([docs.retellai.com][2])
+* **Create Web Call** devuelve `access_token` + `call_id` para que el **frontend** se conecte a la sala WebRTC. ([docs.retellai.com][3])
+* **Webhook**: configura en el dashboard la URL `https://TU_DOMINIO/retell/webhook`. ([docs.retellai.com][5])
+
+## 2) Definir “Functions/Tools” para el agente (tu oro)
+
+El prompt del agente anuncia funciones utilizables; Retell envía un **JSON de invocación** a tu backend (o via webhook), y **tú ejecutas**. Ejemplos concretos (los que ya usas):
+
+**Esquema conceptual (pseudoconfig del agente):**
+
+```json
+{
+  "functions": [
+    {
+      "name": "book_appointment_cal",
+      "description": "Agenda una cita en Cal.com",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {"type":"string"},
+          "phone": {"type":"string"},
+          "slot": {"type":"string"}
+        },
+        "required": ["name","phone","slot"]
+      }
+    },
+    {
+      "name": "check_availability_cal",
+      "description": "Devuelve slots disponibles",
+      "parameters": {
+        "type":"object",
+        "properties": {
+          "date_range": {"type":"string"}
+        }
+      }
+    },
+    {
+      "name": "send_sms",
+      "description": "Envía SMS de confirmación con tu pasarela",
+      "parameters": {
+        "type":"object",
+        "properties": {
+          "to": {"type":"string"},
+          "body": {"type":"string"}
+        },
+        "required": ["to","body"]
+      }
+    },
+    {
+      "name": "transfer_call",
+      "description": "Transfiere la llamada a un agente humano",
+      "parameters": {
+        "type":"object",
+        "properties": {
+          "destination": {"type":"string", "description": "Número E164 o SIP URI"}
+        },
+        "required": ["destination"]
+      }
+    },
+    {
+      "name": "end_call",
+      "description": "Termina la llamada",
+      "parameters": { "type":"object","properties": {} }
+    }
+  ]
+}
+```
+
+**Cómo implementarlas en tu backend (handler simple):**
+
+```bash
+# Añade este endpoint a index.js
+# Maneja invocaciones de funciones desde el agente
+cat >> index.js << 'EOF'
+
+app.post('/retell/functions', async (req, res) => {
+  const { name, arguments: args, call_id } = req.body || {};
+  try {
+    switch (name) {
+      case 'check_availability_cal': {
+        const slots = await myCalCheck(args?.date_range); // tu lógica
+        return res.json({ result: { slots } });
+      }
+      case 'book_appointment_cal': {
+        const r = await myCalBook(args?.name, args?.phone, args?.slot);
+        return res.json({ result: { ok: true, booking: r } });
+      }
+      case 'send_sms': {
+        await mySmsSend(args?.to, args?.body);
+        return res.json({ result: { ok: true } });
+      }
+      case 'transfer_call': {
+        // Devuelve instrucción para que Retell transfiera
+        return res.json({ result: { action: 'transfer', to: args?.destination } });
+      }
+      case 'end_call': {
+        return res.json({ result: { action: 'end' } });
+      }
+      default:
+        return res.status(400).json({ error: 'Función no soportada' });
+    }
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: e?.message || 'Error ejecutando función' });
+  }
+});
+EOF
+
+# Reinicia PM2
+npx pm2 restart retell-crm
+```
+
+> **Por qué así:** Function Calling en Retell permite que el LLM **elija** cuándo llamar a tus herramientas y te pasa los argumentos; tú respondes con el resultado (o con una instrucción como `transfer`/`end`) y el agente actúa. ([docs.retellai.com][4])
+
+## 3) Outbound (campaña desde tu CRM)
+
+**cURL directo** (útil para pruebas o n8n/Make):
+
+```bash
+curl -X POST https://api.retellai.com/v2/calls/phone \
+  -H "Authorization: Bearer $RETELL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_number":"+13053302277",
+    "agent_id":"AGENT_ID_DE_TU_RETELL",
+    "metadata":{"lead_id":"12345","campaign":"renewals_2026"}
+  }'
+```
+
+Esto usa **Create Phone Call**. Guarda el `call_id` para cruzar datos. ([docs.retellai.com][2])
+
+## 4) Inbound (recibir llamadas en tus números)
+
+* **Opción rápida:** números de Retell.
+* **Opción BYO:** Twilio/Vonage por **SIP trunking**. Sigue el paso a paso del doc y configura cabeceras SIP si necesitas caller ID, etc. ([docs.retellai.com][6])
+
+Cuando entra la llamada:
+
+* El evento **call.started** llega a tu webhook, asignas el **agent_id** correcto, enrutas por skill/tenant, etc. ([docs.retellai.com][5])
+
+## 5) Web Call (embebida en tu CRM)
+
+Backend ya expone `/crm/create-web-call`. En el **frontend** usa el Web SDK para conectar con el `access_token` y `call_id`. ([docs.retellai.com][13])
+
+## 6) Webhooks (persistencia en tu CRM)
+
+Configura en Retell la URL `https://TU_DOMINIO/retell/webhook`. Guarda en tu DB:
+
+* `call_id`, `lead_id` (de metadata), timestamps, **transcript**, **recording_url**, outcome, quién transfirió, etc. ([docs.retellai.com][5])
+
+> Luego puedes **consultar por API** (Get/List) para generar reportes o reintentos. ([docs.retellai.com][11])
+
+## 7) Seguridad y claves
+
+* **API Key** solo en backend/servidor.
+* **Public Key** para el chat/callback widget en frontend (seguro). ([docs.retellai.com][12])
+
+---
+
+# Cómo encajan tus funciones (lo que pediste)
+
+* **`check_availability_cal`**: el agente pregunta fechas, llama tu función; tú consultas Cal.com o tu agenda y devuelves una lista de slots “humanos” (ej. “lunes 19 a las cuatro y media”). La guía de Function Calling explica el esquema y el modelo decide cuándo usarla. ([docs.retellai.com][4])
+* **`book_appointment_cal`**: confirmas nombre y teléfono, el agente llama la función, tú creas la cita en Cal.com y devuelves confirmación; el agente lo dice en voz. ([docs.retellai.com][14])
+* **`send_sms`**: tras agendar/transfers, envías SMS con tu gateway (Twilio API, tu propio SMS o BlueBubbles fallback) y devuelves `{ok:true}`. ([docs.retellai.com][14])
+* **`transfer_call`**: si no se convence o quiere hablar “ya”, devuelves `{action:"transfer", to:"+1XXXXXXXXXX"}`; Retell hace la **transferencia** (consulta docs de telephony). ([docs.retellai.com][6])
+* **`end_call`**: final limpio cuando ya no hay nada más que hacer. ([docs.retellai.com][4])
+
+---
+
+# Extras útiles para tu operación
+
+* **Live transcript** y mejoras recientes (Call API v2, WebRTC, pricing): útil para latencia y calidad. ([retellai.com][15])
+* **Widget de chat** (novedad 2025–2025Q3) por si quieres capturar leads web con el mismo agente. ([retellai.com][16])
+* **Prevención de abuso** (IRSF, llamadas premium): configura límites y monitoreo. ([docs.retellai.com][17])
+* **Integración con Make/n8n**: disparas POST para crear llamadas y webhook para actualizar tu CRM (estado “llamado”, resumen, etc.). ([Make][18])
+
+---
+
+# Checklist rápido para que lo tengas operativo hoy
+
+1. Crear agente y obtener **agent_id**. ([docs.retellai.com][10])
+2. Guardar **API Key** en `.env`. ([docs.retellai.com][12])
+3. Levantar backend con endpoints: `/retell/webhook`, `/retell/functions`, `/crm/make-call`, `/crm/create-web-call`. (código arriba)
+4. Configurar **Webhook URL** en Retell. ([docs.retellai.com][5])
+5. Probar cURL de **Create Phone Call** con un número de prueba. ([docs.retellai.com][2])
+6. Si usas tus números, conectar **SIP Twilio/Vonage**. ([docs.retellai.com][6])
+7. En tu CRM, añadir botones: “Llamar (AI)”, “Transferir”, “Reintentar”, “Escuchar grabación”, “Ver transcripción”. **Get/List Calls** para poblarlos. ([docs.retellai.com][11])
+
+---
+
+¿Siguiente paso? Te doy el **prompt base** de agente con tus cinco funciones y la **plantilla exacta** para tu `book_appointment_cal` con Cal.com, o si prefieres, te conecto esto a **n8n** con nodos listos para disparar OUTBOUND desde un Spreadsheet.
+
+[1]: https://docs.retellai.com/general/introduction?utm_source=chatgpt.com "Retell AI: Introduction"
+[2]: https://docs.retellai.com/api-references/create-phone-call?utm_source=chatgpt.com "Create Phone Call"
+[3]: https://docs.retellai.com/api-references/create-web-call?utm_source=chatgpt.com "Create Web Call"
+[4]: https://docs.retellai.com/build/single-multi-prompt/function-calling?utm_source=chatgpt.com "Function Calling Overview"
+[5]: https://docs.retellai.com/features/webhook-overview?utm_source=chatgpt.com "Webhook Overview"
+[6]: https://docs.retellai.com/deploy/twilio?utm_source=chatgpt.com "Twilio"
+[7]: https://docs.retellai.com/deploy/chat-widget?utm_source=chatgpt.com "Retell Website Widget"
+[8]: https://docs.retellai.com/get-started/sdk?utm_source=chatgpt.com "SDKs"
+[9]: https://docs.retellai.com/api-references/list-calls?utm_source=chatgpt.com "List Calls"
+[10]: https://docs.retellai.com/api-references/create-agent?utm_source=chatgpt.com "Create Agent"
+[11]: https://docs.retellai.com/api-references/get-call?utm_source=chatgpt.com "Get Call"
+[12]: https://docs.retellai.com/accounts/api-keys-overview?utm_source=chatgpt.com "API Key Overview"
+[13]: https://docs.retellai.com/deploy/web-call?utm_source=chatgpt.com "Connect to web call"
+[14]: https://docs.retellai.com/build/single-multi-prompt/custom-function?utm_source=chatgpt.com "Integrate any system with custom function"
+[15]: https://www.retellai.com/changelog/important-update-api-changes-new-features?utm_source=chatgpt.com "Important Update: API Changes & New Features"
+[16]: https://www.retellai.com/blog/meet-retell-chat-agents-build-smarter-web-chats?utm_source=chatgpt.com "Real-Time Web Chat Automation Widget"
+[17]: https://docs.retellai.com/reliability/prevent-abuse?utm_source=chatgpt.com "Prevent abuse"
+[18]: https://www.make.com/en/blog/from-missed-calls-to-automated-wins-with-make-and-retell-ai?utm_source=chatgpt.com "24/7 AI Call Handling with Make + Retell AI"
