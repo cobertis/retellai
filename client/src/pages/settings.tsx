@@ -17,8 +17,10 @@ export default function Settings() {
   const [agentId, setAgentId] = useState(user?.defaultAgentId || "");
 
   const updateAgentMutation = useMutation({
-    mutationFn: async (defaultAgentId: string) => {
-      const response = await apiRequest("PATCH", "/api/user/settings", { defaultAgentId });
+    mutationFn: async (defaultAgentId: string | undefined) => {
+      const response = await apiRequest("PATCH", "/api/user/settings", { 
+        defaultAgentId: defaultAgentId || undefined 
+      });
       return response;
     },
     onSuccess: () => {
@@ -47,7 +49,8 @@ export default function Settings() {
   });
 
   const handleSaveAgent = () => {
-    updateAgentMutation.mutate(agentId);
+    const trimmedId = agentId.trim();
+    updateAgentMutation.mutate(trimmedId || undefined);
   };
 
   return (

@@ -34,7 +34,7 @@ export interface IStorage {
   getUserWithPassword(email: string): Promise<any | undefined>;
   createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
-  updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User>;
+  updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User | undefined>;
 
   // Agent operations
   createAgent(userId: string, agent: InsertAgent): Promise<Agent>;
@@ -170,15 +170,19 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User> {
+  async updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User | undefined> {
     const [user] = await db
       .update(users)
       .set({
-        defaultAgentId: settings.defaultAgentId,
+        defaultAgentId: settings.defaultAgentId || null,
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))
       .returning();
+
+    if (!user) {
+      return undefined;
+    }
 
     return {
       id: user.id,

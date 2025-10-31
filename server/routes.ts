@@ -105,7 +105,14 @@ export function registerRoutes(app: Express) {
         defaultAgentId: z.string().optional(),
       }).parse(req.body);
       
-      const user = await storage.updateUserSettings(userId, { defaultAgentId });
+      // Normalize empty string to undefined
+      const normalizedAgentId = defaultAgentId?.trim() || undefined;
+      const user = await storage.updateUserSettings(userId, { defaultAgentId: normalizedAgentId });
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
       res.json(user);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
