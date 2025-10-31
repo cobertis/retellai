@@ -47,11 +47,16 @@ export interface IStorage {
   getPhoneList(id: string): Promise<PhoneList | undefined>;
   listPhoneLists(userId: string): Promise<PhoneList[]>;
   updatePhoneList(id: string, totalNumbers: number): Promise<void>;
+  updatePhoneListDetails(id: string, data: Partial<InsertPhoneList>): Promise<PhoneList | undefined>;
   deletePhoneList(id: string): Promise<void>;
 
   // Phone Number operations
   createPhoneNumbers(numbers: InsertPhoneNumber[]): Promise<void>;
+  createPhoneNumber(number: InsertPhoneNumber): Promise<PhoneNumber>;
+  getPhoneNumber(id: string): Promise<PhoneNumber | undefined>;
   getPhoneNumbersByList(listId: string): Promise<PhoneNumber[]>;
+  updatePhoneNumber(id: string, data: Partial<Omit<InsertPhoneNumber, 'listId'>>): Promise<PhoneNumber | undefined>;
+  deletePhoneNumber(id: string): Promise<void>;
 
   // Campaign operations
   createCampaign(userId: string, campaign: InsertCampaign): Promise<Campaign>;
@@ -251,6 +256,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(phoneLists.id, id));
   }
 
+  async updatePhoneListDetails(id: string, data: Partial<InsertPhoneList>): Promise<PhoneList | undefined> {
+    const [list] = await db
+      .update(phoneLists)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(phoneLists.id, id))
+      .returning();
+    return list;
+  }
+
   async deletePhoneList(id: string): Promise<void> {
     await db.delete(phoneLists).where(eq(phoneLists.id, id));
   }
@@ -262,12 +276,38 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async createPhoneNumber(number: InsertPhoneNumber): Promise<PhoneNumber> {
+    const [phoneNumber] = await db
+      .insert(phoneNumbers)
+      .values(number)
+      .returning();
+    return phoneNumber;
+  }
+
+  async getPhoneNumber(id: string): Promise<PhoneNumber | undefined> {
+    const [number] = await db.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
+    return number;
+  }
+
   async getPhoneNumbersByList(listId: string): Promise<PhoneNumber[]> {
     return await db
       .select()
       .from(phoneNumbers)
       .where(eq(phoneNumbers.listId, listId))
       .orderBy(desc(phoneNumbers.createdAt));
+  }
+
+  async updatePhoneNumber(id: string, data: Partial<Omit<InsertPhoneNumber, 'listId'>>): Promise<PhoneNumber | undefined> {
+    const [number] = await db
+      .update(phoneNumbers)
+      .set(data)
+      .where(eq(phoneNumbers.id, id))
+      .returning();
+    return number;
+  }
+
+  async deletePhoneNumber(id: string): Promise<void> {
+    await db.delete(phoneNumbers).where(eq(phoneNumbers.id, id));
   }
 
   // Campaign operations

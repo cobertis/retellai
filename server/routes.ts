@@ -252,6 +252,39 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/phone-lists/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const list = await storage.getPhoneList(id);
+      
+      if (!list) {
+        return res.status(404).json({ message: "Phone list not found" });
+      }
+      
+      res.json(list);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/phone-lists/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertPhoneListSchema.partial().parse(req.body);
+      
+      const list = await storage.updatePhoneListDetails(id, validatedData);
+      
+      if (!list) {
+        return res.status(404).json({ message: "Phone list not found" });
+      }
+      
+      res.json(list);
+    } catch (error: any) {
+      console.error("Error updating phone list:", error);
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.post("/api/phone-lists/:id/upload", isAuthenticated, upload.single('file'), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -323,6 +356,72 @@ export function registerRoutes(app: Express) {
       res.json({ message: `Uploaded ${phoneNumbers.length} phone numbers` });
     } catch (error: any) {
       console.error("Error uploading CSV:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/phone-lists/:id/numbers", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const numbers = await storage.getPhoneNumbersByList(id);
+      res.json(numbers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/phone-lists/:id/numbers", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertPhoneNumberSchema.omit({ listId: true }).parse(req.body);
+      
+      const number = await storage.createPhoneNumber({
+        ...validatedData,
+        listId: id,
+      });
+      
+      // Update list total count
+      const numbers = await storage.getPhoneNumbersByList(id);
+      await storage.updatePhoneList(id, numbers.length);
+      
+      res.status(201).json(number);
+    } catch (error: any) {
+      console.error("Error creating phone number:", error);
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/phone-lists/:listId/numbers/:numberId", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { numberId } = req.params;
+      const validatedData = insertPhoneNumberSchema.omit({ listId: true }).partial().parse(req.body);
+      
+      const number = await storage.updatePhoneNumber(numberId, validatedData);
+      
+      if (!number) {
+        return res.status(404).json({ message: "Phone number not found" });
+      }
+      
+      res.json(number);
+    } catch (error: any) {
+      console.error("Error updating phone number:", error);
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/phone-lists/:listId/numbers/:numberId", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { listId, numberId } = req.params;
+      
+      await storage.deletePhoneNumber(numberId);
+      
+      // Update list total count
+      const numbers = await storage.getPhoneNumbersByList(listId);
+      await storage.updatePhoneList(listId, numbers.length);
+      
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting phone number:", error);
       res.status(500).json({ message: error.message });
     }
   });
