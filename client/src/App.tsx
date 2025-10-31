@@ -11,6 +11,7 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Agents from "@/pages/agents";
 import PhoneLists from "@/pages/phone-lists";
+import PhoneListDetail from "@/pages/phone-list-detail";
 import Campaigns from "@/pages/campaigns";
 import Calls from "@/pages/calls";
 import CallDetail from "@/pages/call-detail";
@@ -36,6 +37,7 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/agents" component={Agents} />
           <Route path="/phone-lists" component={PhoneLists} />
+          <Route path="/phone-lists/:id" component={PhoneListDetail} />
           <Route path="/campaigns" component={Campaigns} />
           <Route path="/calls" component={Calls} />
           <Route path="/calls/:id" component={CallDetail} />

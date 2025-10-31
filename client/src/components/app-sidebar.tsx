@@ -1,4 +1,4 @@
-import { Home, Users, Phone, BarChart3, Settings, PhoneCall, List } from "lucide-react";
+import { Home, Users, Phone, BarChart3, Settings, PhoneCall, List, LogOut } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -13,7 +13,11 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
   {
@@ -56,6 +60,24 @@ const menuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const { toast } = useToast();
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/logout", undefined);
+    },
+    onSuccess: () => {
+      queryClient.clear();
+      window.location.href = "/login";
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to logout",
+      });
+    },
+  });
 
   return (
     <Sidebar>
@@ -107,6 +129,15 @@ export function AppSidebar() {
               {user?.email}
             </p>
           </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
         </div>
       </SidebarFooter>
     </Sidebar>

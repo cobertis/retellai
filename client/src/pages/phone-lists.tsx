@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Upload, List, Trash2, Loader2, FileText } from "lucide-react";
+import { Plus, Upload, List, Trash2, Loader2, FileText, Eye } from "lucide-react";
+import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import type { PhoneList } from "@shared/schema";
@@ -225,6 +226,17 @@ export default function PhoneLists() {
                   ))}
                 </div>
                 <div className="flex gap-2 pt-2">
+                  <Link href={`/phone-lists/${list.id}`}>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1"
+                      data-testid={`button-view-details-${list.id}`}
+                    >
+                      <Eye className="h-3 w-3 mr-1" />
+                      View Details
+                    </Button>
+                  </Link>
                   <Button
                     variant="outline"
                     size="sm"
@@ -234,8 +246,7 @@ export default function PhoneLists() {
                     }}
                     data-testid={`button-upload-${list.id}`}
                   >
-                    <Upload className="h-3 w-3 mr-1" />
-                    Upload CSV
+                    <Upload className="h-3 w-3" />
                   </Button>
                   <Button
                     variant="destructive"

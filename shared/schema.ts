@@ -9,6 +9,7 @@ import {
   text,
   integer,
   boolean,
+  real,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -60,8 +61,8 @@ export const agents = pgTable("agents", {
   voiceId: varchar("voice_id").notNull(),
   language: varchar("language").default("en-US"),
   responseEngineType: varchar("response_engine_type").notNull(),
-  responsiveness: integer("responsiveness"),
-  interruptionSensitivity: integer("interruption_sensitivity"),
+  responsiveness: real("responsiveness"),
+  interruptionSensitivity: real("interruption_sensitivity"),
   llmId: varchar("llm_id"),
   generalPrompt: text("general_prompt"),
   generalTools: jsonb("general_tools"),
