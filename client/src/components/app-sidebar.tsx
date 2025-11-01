@@ -69,11 +69,13 @@ export function AppSidebar() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const { data: appointmentStats } = useQuery<{ count: number }>({
-    queryKey: ["/api/calls/stats/appointments"],
+  const { data: calcomBookings } = useQuery<any[]>({
+    queryKey: ["/api/calcom/bookings"],
+    refetchInterval: 10000,
+    retry: false,
   });
 
-  const appointmentCount = appointmentStats?.count ?? 0;
+  const appointmentCount = calcomBookings?.length ?? 0;
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
