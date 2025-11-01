@@ -168,48 +168,67 @@ export default function Calls() {
                     <TableHead>Call ID</TableHead>
                     <TableHead>To Number</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Appointment</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Timestamp</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCalls?.map((call) => (
-                    <TableRow 
-                      key={call.id} 
-                      className="hover-elevate cursor-pointer" 
-                      onClick={() => setLocation(`/calls/${call.id}`)}
-                      data-testid={`row-call-${call.id}`}
-                    >
-                      <TableCell className="font-mono text-xs">{call.id}</TableCell>
-                      <TableCell className="font-medium">{call.toNumber}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusColor(call.callStatus)}>
-                          {call.callStatus}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          {formatDuration(call.durationMs)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {call.startTimestamp 
-                          ? format(new Date(call.startTimestamp), 'MMM dd, HH:mm')
-                          : (call.createdAt ? format(new Date(call.createdAt), 'MMM dd, HH:mm') : '-')
-                        }
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/calls/${call.id}`}>
-                          <Button variant="ghost" size="sm" data-testid={`button-view-call-${call.id}`}>
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            View
-                          </Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredCalls?.map((call) => {
+                    const analysis = call.aiAnalysis as any;
+                    const appointmentScheduled = analysis?.appointmentScheduled ?? null;
+                    
+                    return (
+                      <TableRow 
+                        key={call.id} 
+                        className="hover-elevate cursor-pointer" 
+                        onClick={() => setLocation(`/calls/${call.id}`)}
+                        data-testid={`row-call-${call.id}`}
+                      >
+                        <TableCell className="font-mono text-xs">{call.id}</TableCell>
+                        <TableCell className="font-medium">{call.toNumber}</TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusColor(call.callStatus)}>
+                            {call.callStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {appointmentScheduled === true ? (
+                            <Badge className="bg-green-600 hover:bg-green-700 text-white" data-testid={`badge-appointment-scheduled-${call.id}`}>
+                              Cita Agendada
+                            </Badge>
+                          ) : appointmentScheduled === false ? (
+                            <Badge className="bg-red-600 hover:bg-red-700 text-white" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
+                              No agendada
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            {formatDuration(call.durationMs)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {call.startTimestamp 
+                            ? format(new Date(call.startTimestamp), 'MMM dd, HH:mm')
+                            : (call.createdAt ? format(new Date(call.createdAt), 'MMM dd, HH:mm') : '-')
+                          }
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/calls/${call.id}`}>
+                            <Button variant="ghost" size="sm" data-testid={`button-view-call-${call.id}`}>
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                              View
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
