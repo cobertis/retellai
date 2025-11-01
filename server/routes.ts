@@ -1424,18 +1424,28 @@ export function registerRoutes(app: Express) {
 
         case 'call_ended':
           if (event.call) {
+            const disconnectionReason = event.call.disconnection_reason;
+            
+            // Determine if call can be retried based on disconnection reason
+            const retryableReasons = ['dial_no_answer', 'dial_failed', 'dial_busy'];
+            const canRetry = disconnectionReason && retryableReasons.includes(disconnectionReason);
+            
+            // Determine if call was successful (connected and completed)
+            const successfulReasons = ['user_hangup', 'agent_hangup'];
+            const callSucceeded = disconnectionReason && successfulReasons.includes(disconnectionReason);
+            
             await storage.updateCallStatus(
               event.call.call_id,
               event.call.call_status || 'completed',
               event.call.end_timestamp ? new Date(event.call.end_timestamp) : undefined,
               event.call.duration_ms,
-              event.call.disconnection_reason
+              disconnectionReason,
+              canRetry
             );
 
             // Update campaign stats when call ends
             const call = await storage.getCall(event.call.call_id);
             if (call?.campaignId) {
-              const callSucceeded = event.call.call_status === 'ended' || event.call.call_status === 'completed';
               await storage.handleCallEnded(call.campaignId, callSucceeded);
             }
           }

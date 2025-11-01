@@ -82,7 +82,10 @@ export interface IStorage {
   getCall(id: string): Promise<Call | undefined>;
   listCalls(userId: string): Promise<Call[]>;
   getActiveCalls(userId: string): Promise<Call[]>;
-  updateCallStatus(id: string, status: string, endTimestamp?: Date, durationMs?: number, disconnectionReason?: string): Promise<void>;
+  getQueuedCalls(campaignId: string): Promise<Call[]>;
+  getRetriableCalls(campaignId: string): Promise<Call[]>;
+  getInProgressCallsCount(userId: string): Promise<number>;
+  updateCallStatus(id: string, status: string, endTimestamp?: Date, durationMs?: number, disconnectionReason?: string, canRetry?: boolean): Promise<void>;
   updateCall(id: string, data: Partial<Omit<Call, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void>;
 
   // Call Log operations
@@ -487,18 +490,60 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(calls.createdAt));
   }
 
+  async getQueuedCalls(campaignId: string): Promise<Call[]> {
+    return await db
+      .select()
+      .from(calls)
+      .where(
+        and(
+          eq(calls.campaignId, campaignId),
+          eq(calls.callStatus, 'queued')
+        )
+      )
+      .orderBy(calls.createdAt);
+  }
+
+  async getRetriableCalls(campaignId: string): Promise<Call[]> {
+    return await db
+      .select()
+      .from(calls)
+      .where(
+        and(
+          eq(calls.campaignId, campaignId),
+          eq(calls.canRetry, true),
+          sql`${calls.callStatus} IN ('completed', 'ended', 'failed')`
+        )
+      )
+      .orderBy(desc(calls.lastAttemptAt));
+  }
+
+  async getInProgressCallsCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(calls)
+      .where(
+        and(
+          eq(calls.userId, userId),
+          sql`${calls.callStatus} IN ('registered', 'ongoing', 'in_progress')`
+        )
+      );
+    return Number(result[0]?.count || 0);
+  }
+
   async updateCallStatus(
     id: string,
     status: string,
     endTimestamp?: Date,
     durationMs?: number,
-    disconnectionReason?: string
+    disconnectionReason?: string,
+    canRetry?: boolean
   ): Promise<void> {
     const updateData: any = { callStatus: status, updatedAt: new Date() };
     
     if (endTimestamp) updateData.endTimestamp = endTimestamp;
     if (durationMs !== undefined) updateData.durationMs = durationMs;
     if (disconnectionReason) updateData.disconnectionReason = disconnectionReason;
+    if (canRetry !== undefined) updateData.canRetry = canRetry;
 
     await db
       .update(calls)
