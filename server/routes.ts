@@ -272,7 +272,8 @@ async function processConcurrently<T>(
 
 // Wait for specific call IDs to reach terminal status (completed, failed, etc)
 async function waitUntilCallsComplete(callIds: string[], campaignId?: string): Promise<void> {
-  const maxWaitTime = 5 * 60 * 1000; // 5 minutes max per batch
+  const maxWaitTime = 15 * 60 * 1000; // 15 minutes max per batch
+  const maxCallTime = 10 * 60 * 1000; // 10 minutes max per individual call (enough for real conversations)
   const pollInterval = 5000; // Check every 5 seconds
   const startTime = Date.now();
 
@@ -294,8 +295,56 @@ async function waitUntilCallsComplete(callIds: string[], campaignId?: string): P
       callIds.map(id => storage.getCall(id).catch(() => null))
     );
 
-    // Count how many are still in progress
-    const inProgress = calls.filter(call => 
+    const now = Date.now();
+    let forcedFailures = 0;
+
+    // Check each call for timeout
+    for (const call of calls) {
+      if (!call) continue;
+      
+      // Skip if already ended or failed
+      if (call.callStatus === 'ended' || call.callStatus === 'failed') {
+        continue;
+      }
+
+      // Check if call has been running too long (stuck, not progressing)
+      const callStarted = call.startTimestamp ? new Date(call.startTimestamp).getTime() : null;
+      if (callStarted && (now - callStarted) > maxCallTime) {
+        console.log(`⚠️  Call ${call.id} timeout after 10 minutes - marking as failed`);
+        
+        try {
+          // Update call status to failed
+          await storage.updateCall(call.id, {
+            callStatus: 'failed',
+            endTimestamp: new Date(),
+            disconnectionReason: 'timeout',
+          });
+
+          // Update campaign stats
+          if (campaignId) {
+            const campaign = await storage.getCampaign(campaignId);
+            if (campaign) {
+              await storage.incrementCampaignFailed(campaignId);
+            }
+          }
+
+          forcedFailures++;
+        } catch (error) {
+          console.error(`Error marking call ${call.id} as failed:`, error);
+        }
+      }
+    }
+
+    if (forcedFailures > 0) {
+      console.log(`🔧 Auto-failed ${forcedFailures} stuck call(s)`);
+    }
+
+    // Re-check how many are still in progress after forced failures
+    const updatedCalls = await Promise.all(
+      callIds.map(id => storage.getCall(id).catch(() => null))
+    );
+
+    const inProgress = updatedCalls.filter(call => 
       call && call.callStatus !== 'ended' && call.callStatus !== 'failed'
     ).length;
 
