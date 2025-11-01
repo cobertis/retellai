@@ -73,6 +73,108 @@ function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }>
   );
 }
 
+function ChatGPTAnalysisDisplay({ analysis }: { analysis: any }) {
+  return (
+    <div className="border-2 border-primary/20 rounded-lg p-4 bg-primary/5 space-y-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="h-5 w-5 text-primary" />
+        <h3 className="text-lg font-semibold">ChatGPT Analysis</h3>
+      </div>
+      
+      {analysis.summary && (
+        <div>
+          <p className="text-sm font-medium mb-2">Summary</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{analysis.summary}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {analysis.sentiment && (
+          <div className="bg-card p-3 rounded-md">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Sentiment</p>
+            <Badge variant={
+              analysis.sentiment === 'positive' ? 'default' :
+              analysis.sentiment === 'negative' ? 'destructive' : 'secondary'
+            }>
+              {analysis.sentiment}
+            </Badge>
+          </div>
+        )}
+        {analysis.callQuality && (
+          <div className="bg-card p-3 rounded-md">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Call Quality</p>
+            <Badge variant={
+              analysis.callQuality === 'excellent' || analysis.callQuality === 'good' ? 'default' : 'secondary'
+            }>
+              {analysis.callQuality}
+            </Badge>
+          </div>
+        )}
+        {analysis.customerIntent && (
+          <div className="bg-card p-3 rounded-md">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Customer Intent</p>
+            <p className="text-sm font-semibold">{analysis.customerIntent}</p>
+          </div>
+        )}
+      </div>
+
+      {analysis.keyTopics && analysis.keyTopics.length > 0 && (
+        <div>
+          <p className="text-sm font-medium mb-2">Key Topics</p>
+          <div className="flex flex-wrap gap-2">
+            {analysis.keyTopics.map((topic: string, idx: number) => (
+              <Badge key={idx} variant="outline">
+                {topic}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analysis.actionItems && analysis.actionItems.length > 0 && (
+        <div>
+          <p className="text-sm font-medium mb-2">Action Items</p>
+          <ul className="space-y-1">
+            {analysis.actionItems.map((item: string, idx: number) => (
+              <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                <span className="text-primary mt-1">•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {analysis.notes && (
+        <div>
+          <p className="text-sm font-medium mb-2">Additional Notes</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">{analysis.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomAnalysisDisplay({ customData }: { customData: Record<string, any> }) {
+  return (
+    <div className="border-t pt-4">
+      <p className="text-sm font-medium mb-3">Post-Call Analysis (Custom Fields)</p>
+      <div className="space-y-3">
+        {Object.entries(customData).map(([key, value]) => (
+          <div key={key} className="bg-muted/50 p-3 rounded-md">
+            <p className="text-xs font-semibold text-muted-foreground capitalize mb-1">
+              {key.replace(/_/g, ' ')}
+            </p>
+            <p className="text-sm whitespace-pre-wrap">
+              {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CallDetail() {
   const { toast } = useToast();
   const [, params] = useRoute("/calls/:id");
@@ -471,88 +573,7 @@ export default function CallDetail() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {call?.aiAnalysis && (() => {
-                const analysis = call.aiAnalysis as any;
-                return (
-                  <div className="border-2 border-primary/20 rounded-lg p-4 bg-primary/5 space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      <h3 className="text-lg font-semibold">ChatGPT Analysis</h3>
-                    </div>
-                    
-                    {analysis.summary && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">Summary</p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">{analysis.summary}</p>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {analysis.sentiment && (
-                        <div className="bg-card p-3 rounded-md">
-                          <p className="text-xs font-medium text-muted-foreground mb-1">Sentiment</p>
-                          <Badge variant={
-                            analysis.sentiment === 'positive' ? 'default' :
-                            analysis.sentiment === 'negative' ? 'destructive' : 'secondary'
-                          }>
-                            {analysis.sentiment}
-                          </Badge>
-                        </div>
-                      )}
-                      {analysis.callQuality && (
-                        <div className="bg-card p-3 rounded-md">
-                          <p className="text-xs font-medium text-muted-foreground mb-1">Call Quality</p>
-                          <Badge variant={
-                            analysis.callQuality === 'excellent' || analysis.callQuality === 'good' ? 'default' : 'secondary'
-                          }>
-                            {analysis.callQuality}
-                          </Badge>
-                        </div>
-                      )}
-                      {analysis.customerIntent && (
-                        <div className="bg-card p-3 rounded-md">
-                          <p className="text-xs font-medium text-muted-foreground mb-1">Customer Intent</p>
-                          <p className="text-sm font-semibold">{analysis.customerIntent}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {analysis.keyTopics && analysis.keyTopics.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">Key Topics</p>
-                        <div className="flex flex-wrap gap-2">
-                          {analysis.keyTopics.map((topic: string, idx: number) => (
-                            <Badge key={idx} variant="outline">
-                              {topic}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {analysis.actionItems && analysis.actionItems.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">Action Items</p>
-                        <ul className="space-y-1">
-                          {analysis.actionItems.map((item: string, idx: number) => (
-                            <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                              <span className="text-primary mt-1">•</span>
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {analysis.notes && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">Additional Notes</p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">{analysis.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })() as React.ReactElement}
+              {call?.aiAnalysis && <ChatGPTAnalysisDisplay analysis={call.aiAnalysis} />}
 
               {callLog?.callSummary && (
                 <div className="border-t pt-4">
@@ -560,26 +581,9 @@ export default function CallDetail() {
                   <p className="text-sm text-muted-foreground">{callLog.callSummary}</p>
                 </div>
               )}
-              {callLog?.customAnalysisData && Object.keys(callLog.customAnalysisData as object).length > 0 && (() => {
-                const customData = callLog.customAnalysisData as Record<string, any>;
-                return (
-                  <div className="border-t pt-4">
-                    <p className="text-sm font-medium mb-3">Post-Call Analysis (Custom Fields)</p>
-                    <div className="space-y-3">
-                      {Object.entries(customData).map(([key, value]) => (
-                        <div key={key} className="bg-muted/50 p-3 rounded-md">
-                          <p className="text-xs font-semibold text-muted-foreground capitalize mb-1">
-                            {key.replace(/_/g, ' ')}
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">
-                            {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })() as React.ReactElement}
+              {callLog?.customAnalysisData && Object.keys(callLog.customAnalysisData as object).length > 0 && (
+                <CustomAnalysisDisplay customData={callLog.customAnalysisData as Record<string, any>} />
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Successful</p>
