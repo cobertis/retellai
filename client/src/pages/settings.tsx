@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Settings as SettingsIcon, User, Key, Bell, Bot, Calendar } from "lucide-react";
+import { Settings as SettingsIcon, User, Key, Bell, Calendar } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -14,40 +14,15 @@ export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [agentId, setAgentId] = useState(user?.defaultAgentId || "");
   const [calcomApiKey, setCalcomApiKey] = useState(user?.calcomApiKey || "");
   const [calcomEventTypeId, setCalcomEventTypeId] = useState(user?.calcomEventTypeId || "");
 
   useEffect(() => {
     if (user) {
-      setAgentId(user.defaultAgentId || "");
       setCalcomApiKey(user.calcomApiKey || "");
       setCalcomEventTypeId(user.calcomEventTypeId || "");
     }
   }, [user]);
-
-  const updateAgentMutation = useMutation({
-    mutationFn: async (defaultAgentId: string | undefined) => {
-      const response = await apiRequest("PATCH", "/api/user/settings", { 
-        defaultAgentId: defaultAgentId || undefined 
-      });
-      return response;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      toast({
-        title: "Settings saved",
-        description: "Your Retell AI Agent ID has been updated successfully.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to save settings. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -78,11 +53,6 @@ export default function Settings() {
       });
     },
   });
-
-  const handleSaveAgent = () => {
-    const trimmedId = agentId.trim();
-    updateAgentMutation.mutate(trimmedId || undefined);
-  };
 
   const handleSaveCalcom = () => {
     const trimmedApiKey = calcomApiKey.trim();
@@ -145,44 +115,6 @@ export default function Settings() {
                   <Input value={user?.lastName || ''} disabled />
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              <CardTitle>Retell AI Agent</CardTitle>
-            </div>
-            <CardDescription>
-              Connect your existing Retell AI agent by entering its Agent ID
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="agent-id">Agent ID</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="agent-id"
-                  type="text"
-                  placeholder="agent_xxxxxxxxxxxxxxxxxx"
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  className="font-mono text-sm"
-                  data-testid="input-agent-id"
-                />
-                <Button
-                  onClick={handleSaveAgent}
-                  disabled={updateAgentMutation.isPending}
-                  data-testid="button-save-agent-id"
-                >
-                  {updateAgentMutation.isPending ? "Saving..." : "Save"}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Enter the Agent ID from your Retell AI dashboard. This agent will be used for all campaigns you create.
-              </p>
             </div>
           </CardContent>
         </Card>
