@@ -46,6 +46,151 @@ interface ClassificationProgress {
 
 const classificationProgress = new Map<string, ClassificationProgress>();
 
+// Async function to classify a list with AI
+async function classifyListAsync(
+  userId: string,
+  listId: string,
+  phoneNumbers: any[],
+  originalListName: string
+) {
+  const progress = classificationProgress.get(listId)!;
+  
+  try {
+    // Extract names
+    const contacts = phoneNumbers.map(pn => ({
+      id: pn.id,
+      phone: pn.phoneNumber,
+      firstName: pn.firstName || '',
+      lastName: pn.lastName || '',
+      email: pn.email || '',
+      fullName: `${pn.firstName || ''} ${pn.lastName || ''}`.trim(),
+    }));
+
+    const names = contacts.map(c => c.fullName);
+    console.log(`🤖 Classifying ${names.length} names...`);
+
+    // Process in batches of 30 names, with 15 concurrent batches
+    const BATCH_SIZE = 30;
+    const CONCURRENT_BATCHES = 15;
+    const batches: string[][] = [];
+    
+    for (let i = 0; i < names.length; i += BATCH_SIZE) {
+      batches.push(names.slice(i, i + BATCH_SIZE));
+    }
+
+    progress.totalBatches = batches.length;
+    console.log(`📦 Processing ${batches.length} batches (${BATCH_SIZE} names each, ${CONCURRENT_BATCHES} concurrent)`);
+
+    // Process batches concurrently
+    const allClassifications: Array<{ name: string; hispanic: boolean }> = [];
+    
+    for (let i = 0; i < batches.length; i += CONCURRENT_BATCHES) {
+      const batchGroup = batches.slice(i, i + CONCURRENT_BATCHES);
+      
+      const results = await Promise.all(
+        batchGroup.map(async (batch, idx) => {
+          const batchNum = i + idx + 1;
+          progress.currentBatch = batchNum;
+          console.log(`⚙️  Processing batch ${batchNum}/${batches.length} (${batch.length} names)...`);
+          
+          const classifications = await openaiService.classifyNames(batch);
+          
+          progress.completedBatches = batchNum;
+          progress.processedNames = Math.min(batchNum * BATCH_SIZE, names.length);
+          
+          console.log(`✅ Batch ${batchNum}/${batches.length} complete`);
+          return classifications;
+        })
+      );
+      
+      // Flatten results
+      results.forEach(r => allClassifications.push(...r));
+    }
+
+    console.log(`✅ All classifications complete: ${allClassifications.length} names processed`);
+
+    // Map classifications back to contacts
+    const classifiedContacts = contacts.map(contact => {
+      const classification = allClassifications.find(c => c.name === contact.fullName);
+      return {
+        ...contact,
+        isHispanic: classification?.hispanic || false
+      };
+    });
+
+    // Separate into two groups
+    const hispanicContacts = classifiedContacts.filter(c => c.isHispanic);
+    const nonHispanicContacts = classifiedContacts.filter(c => !c.isHispanic);
+
+    progress.hispanicCount = hispanicContacts.length;
+    progress.nonHispanicCount = nonHispanicContacts.length;
+
+    console.log(`📊 Hispanic: ${hispanicContacts.length}, Non-Hispanic: ${nonHispanicContacts.length}`);
+
+    // Create two new lists
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
+    const hispanicList = await storage.createPhoneList(userId, {
+      name: `Español - ${originalListName}`,
+      description: `Leads clasificados como Hispanos/Latinos (${today})`,
+      classification: 'Hispanic/Latino',
+      tags: ['AI-Classified', 'Spanish'],
+      totalNumbers: hispanicContacts.length,
+    });
+
+    const nonHispanicList = await storage.createPhoneList(userId, {
+      name: `Inglés - ${originalListName}`,
+      description: `Leads clasificados como No-Hispanos (${today})`,
+      classification: 'Non-Hispanic',
+      tags: ['AI-Classified', 'English'],
+      totalNumbers: nonHispanicContacts.length,
+    });
+
+    progress.hispanicListId = hispanicList.id;
+    progress.nonHispanicListId = nonHispanicList.id;
+    progress.hispanicListName = hispanicList.name;
+    progress.nonHispanicListName = nonHispanicList.name;
+
+    console.log(`💾 Saving to new lists...`);
+
+    // Add contacts to respective lists
+    for (const contact of hispanicContacts) {
+      await storage.createPhoneNumber({
+        listId: hispanicList.id,
+        phoneNumber: contact.phone,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        email: contact.email,
+      });
+    }
+
+    for (const contact of nonHispanicContacts) {
+      await storage.createPhoneNumber({
+        listId: nonHispanicList.id,
+        phoneNumber: contact.phone,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        email: contact.email,
+      });
+    }
+
+    // Mark original list as classified (update tags)
+    await storage.updatePhoneListDetails(listId, {
+      tags: ['Classified'],
+      description: `Classified into 2 lists: "${hispanicList.name}" and "${nonHispanicList.name}"`
+    });
+
+    progress.status = 'completed';
+    console.log(`✅ Classification complete! Created 2 new lists.`);
+
+  } catch (error: any) {
+    console.error('❌ Classification failed:', error);
+    progress.status = 'error';
+    progress.errorMessage = error.message;
+    throw error;
+  }
+}
+
 // Helper function to process calls with concurrency limit
 async function processConcurrently<T>(
   items: T[],
@@ -637,6 +782,78 @@ export function registerRoutes(app: Express) {
     } catch (error: any) {
       console.error("❌ Error uploading leads:", error);
       res.status(500).send(error.message || "Failed to upload leads");
+    }
+  });
+
+  // STEP 2: Classify an existing list with AI
+  app.post("/api/classify-list/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const { id } = req.params;
+
+      // Get the phone list
+      const phoneList = await storage.getPhoneList(id);
+      if (!phoneList) {
+        return res.status(404).json({ message: "Phone list not found" });
+      }
+
+      // Get all phone numbers from this list
+      const phoneNumbers = await storage.getPhoneNumbersByList(id);
+      if (phoneNumbers.length === 0) {
+        return res.status(400).json({ message: "No phone numbers in this list" });
+      }
+
+      console.log(`🤖 Starting AI classification for ${phoneNumbers.length} contacts...`);
+
+      // Initialize progress tracking
+      const progressId = id;
+      classificationProgress.set(progressId, {
+        status: 'processing',
+        totalBatches: 0,
+        completedBatches: 0,
+        totalNames: phoneNumbers.length,
+        processedNames: 0,
+        hispanicCount: 0,
+        nonHispanicCount: 0,
+        currentBatch: 0,
+      });
+
+      // Start async classification (don't await, let it run in background)
+      classifyListAsync(userId, id, phoneNumbers, phoneList.name || 'List').catch(error => {
+        console.error('❌ Classification error:', error);
+        const progress = classificationProgress.get(progressId);
+        if (progress) {
+          progress.status = 'error';
+          progress.errorMessage = error.message;
+        }
+      });
+
+      res.json({
+        success: true,
+        message: "Classification started",
+        progressId: progressId,
+      });
+
+    } catch (error: any) {
+      console.error("❌ Error starting classification:", error);
+      res.status(500).send(error.message || "Failed to start classification");
+    }
+  });
+
+  // Get classification progress
+  app.get("/api/classify-progress/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const progress = classificationProgress.get(id);
+
+      if (!progress) {
+        return res.status(404).json({ message: "No classification in progress for this list" });
+      }
+
+      res.json(progress);
+    } catch (error: any) {
+      console.error("❌ Error getting progress:", error);
+      res.status(500).send(error.message || "Failed to get progress");
     }
   });
 
