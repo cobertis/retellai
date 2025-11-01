@@ -15,6 +15,7 @@ export interface CallAnalysisResult {
   appointmentScheduled: boolean;
   appointmentDetails?: string;
   customerName?: string;
+  noAppointmentReason?: string;
   calcomVerification?: {
     verified: boolean;
     bookingId?: number;

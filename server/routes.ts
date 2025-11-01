@@ -1185,7 +1185,7 @@ export function registerRoutes(app: Express) {
                     );
                     
                     // Add the reason to the analysis
-                    (analysis as any).noAppointmentReason = noAppointmentReason;
+                    analysis.noAppointmentReason = noAppointmentReason;
                     
                     console.log(`📝 No appointment reason for ${event.call.call_id}: ${noAppointmentReason.substring(0, 100)}...`);
                   } catch (reasonError) {
