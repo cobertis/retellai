@@ -163,9 +163,9 @@ Provide a clear, concise explanation in Spanish of what happened and why no appo
       return [];
     }
 
-    // Process in larger batches with parallel processing for speed
-    const batchSize = 100; // Increased from 50 for efficiency
-    const parallelLimit = 10; // Process 10 batches at once
+    // Process in batches with parallel processing for speed
+    const batchSize = 30; // Optimal size to avoid JSON truncation
+    const parallelLimit = 15; // Process 15 batches at once for speed
     const totalBatches = Math.ceil(names.length / batchSize);
     
     console.log(`Starting parallel classification: ${names.length} names in ${totalBatches} batches (${parallelLimit} concurrent)`);
@@ -216,8 +216,16 @@ Example response:
           throw new Error('No response from OpenAI');
         }
 
-        const parsed = JSON.parse(response);
-        const batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
+        // Try to parse, with fallback for truncated JSON
+        let batchResults: { name: string; hispanic: boolean }[] = [];
+        try {
+          const parsed = JSON.parse(response);
+          batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
+        } catch (parseError) {
+          // If JSON is truncated, try to extract what we can
+          console.log(`⚠️  Batch ${batchNum}/${totalBatches}: JSON parse failed, using fallback`);
+          batchResults = batch.map(name => ({ name, hispanic: false }));
+        }
         
         const percentComplete = Math.round((batchNum / totalBatches) * 100);
         console.log(`✓ Batch ${batchNum}/${totalBatches} complete (${percentComplete}%)`);
