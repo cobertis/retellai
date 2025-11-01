@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "./storage";
 import { retellService } from "./retellService";
+import { openaiService } from "./openaiService";
 import { isAuthenticated } from "./auth";
 import passport from "passport";
 import bcrypt from "bcrypt";
@@ -902,6 +903,108 @@ export function registerRoutes(app: Express) {
       });
     } catch (error: any) {
       console.error('Error syncing call status:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Analyze a single call with ChatGPT
+  app.post("/api/calls/:id/analyze", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      
+      // Get the call
+      const call = await storage.getCall(id);
+      if (!call) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+      
+      // Security check
+      if (call.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      // Get the call log with transcript
+      const callLog = await storage.getCallLog(id);
+      if (!callLog?.transcript) {
+        return res.status(400).json({ message: "No transcript available for this call" });
+      }
+      
+      // Analyze with ChatGPT
+      const analysis = await openaiService.analyzeCall(callLog.transcript, call.durationMs || undefined);
+      
+      // Store the analysis
+      await storage.updateCall(id, {
+        aiAnalysis: analysis as any,
+      });
+      
+      res.json({
+        message: "Call analyzed successfully",
+        analysis
+      });
+    } catch (error: any) {
+      console.error('Error analyzing call:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Analyze multiple calls in batch
+  app.post("/api/calls/analyze-batch", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const { callIds } = req.body;
+      
+      if (!Array.isArray(callIds) || callIds.length === 0) {
+        return res.status(400).json({ message: "callIds must be a non-empty array" });
+      }
+      
+      // Get calls with transcripts
+      const callsToAnalyze: { callId: string; transcript: string; durationMs?: number }[] = [];
+      
+      for (const callId of callIds) {
+        const call = await storage.getCall(callId);
+        if (!call || call.userId !== userId) {
+          continue; // Skip unauthorized or non-existent calls
+        }
+        
+        const callLog = await storage.getCallLog(callId);
+        if (callLog?.transcript) {
+          callsToAnalyze.push({
+            callId,
+            transcript: callLog.transcript,
+            durationMs: call.durationMs || undefined
+          });
+        }
+      }
+      
+      if (callsToAnalyze.length === 0) {
+        return res.status(400).json({ message: "No calls with transcripts found" });
+      }
+      
+      // Analyze in batch
+      const results = await openaiService.analyzeBatch(callsToAnalyze);
+      
+      // Store analyses
+      let stored = 0;
+      for (const [callId, analysis] of results.entries()) {
+        try {
+          await storage.updateCall(callId, {
+            aiAnalysis: analysis as any,
+          });
+          stored++;
+        } catch (error) {
+          console.error(`Error storing analysis for call ${callId}:`, error);
+        }
+      }
+      
+      res.json({
+        message: `Analyzed ${results.size} calls`,
+        analyzed: results.size,
+        stored,
+        total: callIds.length
+      });
+    } catch (error: any) {
+      console.error('Error analyzing calls in batch:', error);
       res.status(500).json({ message: error.message });
     }
   });

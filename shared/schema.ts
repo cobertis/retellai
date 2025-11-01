@@ -174,6 +174,7 @@ export const calls = pgTable("calls", {
   endTimestamp: timestamp("end_timestamp"),
   durationMs: integer("duration_ms"),
   disconnectionReason: varchar("disconnection_reason"),
+  aiAnalysis: jsonb("ai_analysis"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
