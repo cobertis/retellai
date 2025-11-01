@@ -381,6 +381,99 @@ async function waitUntilCallsComplete(callIds: string[], campaignId?: string): P
   }
 }
 
+// Resume a campaign from where it left off (after server restart)
+async function resumeCampaign(campaignId: string): Promise<void> {
+  try {
+    console.log(`🔄 Resuming campaign ${campaignId}...`);
+    
+    const campaign = await storage.getCampaign(campaignId);
+    if (!campaign) {
+      console.error(`Campaign ${campaignId} not found`);
+      return;
+    }
+
+    // Get all phone numbers from the list (excluding already contacted)
+    const phoneNumbers = await storage.getPhoneNumbersByList(campaign.listId, true);
+    
+    if (phoneNumbers.length === 0) {
+      console.log(`No more phone numbers to call for campaign ${campaignId}`);
+      await storage.updateCampaign(campaignId, { 
+        status: 'completed',
+        isRunning: false 
+      });
+      return;
+    }
+
+    console.log(`📞 Found ${phoneNumbers.length} remaining numbers for campaign ${campaignId}`);
+    console.log(`📦 Resuming from batch ${campaign.currentBatch || 0} of ${campaign.totalBatches || 0}`);
+
+    const userId = campaign.userId;
+
+    // Resume processing from the current batch
+    void processConcurrently(
+      phoneNumbers, 
+      campaign.concurrencyLimit || 20, 
+      async (phoneNumber): Promise<{ callId: string } | null> => {
+        try {
+          // Create call in Retell AI
+          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+          const retellCall = await retellService.createPhoneCall({
+            from_number: fromNum,
+            to_number: phoneNumber.phoneNumber,
+            override_agent_id: campaign.agentId,
+            metadata: {
+              campaignId: campaign.id,
+              listId: campaign.listId,
+              phoneNumberId: phoneNumber.id,
+            },
+          });
+
+          // Store call in our database  
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+            
+          await storage.createCall({
+            id: retellCall.call_id,
+            userId,
+            campaignId: campaign.id,
+            agentId: campaign.agentId,
+            fromNumber: fromNum,
+            toNumber: toNumber,
+            callStatus: retellCall.call_status || 'queued',
+            startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
+            endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
+            durationMs: retellCall.duration_ms || null,
+            disconnectionReason: retellCall.disconnection_reason || null,
+          });
+
+          // Create call log
+          await storage.createCallLog({
+            id: randomUUID(),
+            callId: retellCall.call_id,
+            transcript: null,
+            recordingUrl: null,
+            callSummary: null,
+            callSuccessful: null,
+            userSentiment: null,
+            inVoicemail: null,
+          });
+          
+          return { callId: retellCall.call_id };
+        } catch (error) {
+          console.error("Error creating call:", error);
+          return null;
+        }
+      },
+      campaignId,
+      userId,
+      campaign.currentBatch || 0
+    );
+  } catch (error) {
+    console.error(`Error resuming campaign ${campaignId}:`, error);
+  }
+}
+
 export function registerRoutes(app: Express) {
   // Auth endpoints
   app.post("/api/register", async (req: Request, res: Response) => {

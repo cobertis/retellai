@@ -410,6 +410,13 @@ export class DatabaseStorage implements IStorage {
       .where(eq(campaigns.id, id));
   }
 
+  async updateCampaign(id: string, updates: Partial<Campaign>): Promise<void> {
+    await db
+      .update(campaigns)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(campaigns.id, id));
+  }
+
   async incrementCampaignInProgress(id: string): Promise<void> {
     await db
       .update(campaigns)
