@@ -261,8 +261,8 @@ async function processConcurrently<T>(
       // Wait if we're at or over the limit
       if (actualActiveCalls >= concurrencyLimit) {
         console.log(`⏸️  Queue waiting... (${actualActiveCalls}/${concurrencyLimit} active calls, ${items.length - index} remaining)`);
-        // Wait 2 seconds and check again
-        setTimeout(() => processNext(), 2000);
+        // Wait 5 seconds and check again (longer to let calls complete)
+        setTimeout(() => processNext(), 5000);
         return;
       }
 
@@ -281,24 +281,22 @@ async function processConcurrently<T>(
       processor(items[currentIndex])
         .then(() => {
           activeWorkers--;
-          // Delay before starting next to prevent API rate limiting
-          setTimeout(() => processNext(), 500);
+          // Longer delay before starting next to prevent API rate limiting
+          setTimeout(() => processNext(), 1500);
         })
         .catch((error) => {
           console.error(`Error processing item ${currentIndex}:`, error);
           activeWorkers--;
-          // Continue processing even if one fails
-          setTimeout(() => processNext(), 500);
+          // Continue processing even if one fails (with longer delay)
+          setTimeout(() => processNext(), 1500);
         });
 
-      // Try to fill up to concurrency limit (but check active calls first)
-      processNext();
+      // Don't try to fill immediately - let it process one at a time
+      // processNext() will be called from the then/catch callbacks above
     }
 
-    // Start initial batch of workers (reduced to prevent overwhelming API)
-    for (let i = 0; i < Math.min(5, items.length); i++) {
-      processNext();
-    }
+    // Start with just 1 worker to prevent overwhelming API
+    processNext();
   });
 }
 
@@ -1124,8 +1122,9 @@ export function registerRoutes(app: Express) {
             
             try {
               const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+              const failedCallId = randomUUID();
               await storage.createCall({
-                id: randomUUID(),
+                id: failedCallId,
                 userId,
                 campaignId: campaign.id,
                 agentId,
@@ -1141,7 +1140,7 @@ export function registerRoutes(app: Express) {
 
               await storage.createCallLog({
                 id: randomUUID(),
-                callId: randomUUID(),
+                callId: failedCallId,
                 transcript: null,
                 recordingUrl: null,
                 callSummary: null,
@@ -1255,8 +1254,9 @@ export function registerRoutes(app: Express) {
           
           try {
             const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+            const failedCallId = randomUUID();
             await storage.createCall({
-              id: randomUUID(),
+              id: failedCallId,
               userId,
               campaignId: id,
               agentId: campaign.agentId,
@@ -1272,7 +1272,7 @@ export function registerRoutes(app: Express) {
 
             await storage.createCallLog({
               id: randomUUID(),
-              callId: randomUUID(),
+              callId: failedCallId,
               transcript: null,
               recordingUrl: null,
               callSummary: null,
