@@ -29,9 +29,9 @@ export default function Campaigns() {
   const { data: campaigns, isLoading } = useQuery<Campaign[]>({
     queryKey: ["/api/campaigns"],
     refetchInterval: (query) => {
-      // Auto-refresh every 2 seconds if there are active campaigns
+      // Auto-refresh every 2 seconds if there are active or paused campaigns
       const hasActiveCampaigns = query.state.data?.some(
-        (c: Campaign) => c.status === 'active'
+        (c: Campaign) => c.status === 'active' || c.status === 'paused'
       );
       return hasActiveCampaigns ? 2000 : false;
     },
@@ -112,6 +112,67 @@ export default function Campaigns() {
       toast({
         title: "Error",
         description: error.message || "Failed to start campaign",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/campaigns/${id}/pause`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Success",
+        description: "Campaign paused successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to pause campaign",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/campaigns/${id}/resume`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Success",
+        description: "Campaign resumed successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to resume campaign",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const retryFailedMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("POST", `/api/campaigns/${id}/retry-failed`, undefined);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Success",
+        description: `Retrying ${data.retriedCount} failed calls`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to retry calls",
         variant: "destructive",
       });
     },
@@ -264,18 +325,54 @@ export default function Campaigns() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {campaign.status === 'active' ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => stopMutation.mutate(campaign.id)}
-                        disabled={stopMutation.isPending}
-                        data-testid={`button-stop-campaign-${campaign.id}`}
-                      >
-                        <StopCircle className="h-3 w-3 mr-1" />
-                        Stop
-                      </Button>
-                    ) : campaign.status === 'draft' || campaign.status === 'paused' ? (
+                    {campaign.status === 'active' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => pauseMutation.mutate(campaign.id)}
+                          disabled={pauseMutation.isPending}
+                          data-testid={`button-pause-campaign-${campaign.id}`}
+                        >
+                          <Pause className="h-3 w-3 mr-1" />
+                          Pause
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => stopMutation.mutate(campaign.id)}
+                          disabled={stopMutation.isPending}
+                          data-testid={`button-stop-campaign-${campaign.id}`}
+                        >
+                          <StopCircle className="h-3 w-3 mr-1" />
+                          Stop
+                        </Button>
+                      </>
+                    )}
+                    {campaign.status === 'paused' && (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => resumeMutation.mutate(campaign.id)}
+                          disabled={resumeMutation.isPending}
+                          data-testid={`button-resume-campaign-${campaign.id}`}
+                        >
+                          <Play className="h-3 w-3 mr-1" />
+                          Resume
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => stopMutation.mutate(campaign.id)}
+                          disabled={stopMutation.isPending}
+                          data-testid={`button-stop-campaign-${campaign.id}`}
+                        >
+                          <StopCircle className="h-3 w-3 mr-1" />
+                          Stop
+                        </Button>
+                      </>
+                    )}
+                    {campaign.status === 'draft' && (
                       <Button
                         size="sm"
                         onClick={() => startMutation.mutate(campaign.id)}
@@ -285,7 +382,19 @@ export default function Campaigns() {
                         <Play className="h-3 w-3 mr-1" />
                         Start
                       </Button>
-                    ) : null}
+                    )}
+                    {(campaign.status === 'completed' || campaign.status === 'failed' || campaign.status === 'stopped') && campaign.failedCalls && campaign.failedCalls > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => retryFailedMutation.mutate(campaign.id)}
+                        disabled={retryFailedMutation.isPending}
+                        data-testid={`button-retry-campaign-${campaign.id}`}
+                      >
+                        <PhoneCall className="h-3 w-3 mr-1" />
+                        Retry {campaign.failedCalls}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="destructive"

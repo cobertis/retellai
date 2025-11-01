@@ -46,6 +46,9 @@ interface ClassificationProgress {
 
 const classificationProgress = new Map<string, ClassificationProgress>();
 
+// Global map to track paused campaigns
+const pausedCampaigns = new Set<string>();
+
 // Async function to classify a list with AI
 async function classifyListAsync(
   userId: string,
@@ -213,12 +216,13 @@ async function classifyListAsync(
   }
 }
 
-// Helper function to process calls with dynamic concurrency limit
+// Helper function to process calls with dynamic concurrency limit and pause/resume support
 // This maintains a pool of workers that automatically refills as calls complete
 async function processConcurrently<T>(
   items: T[],
   concurrencyLimit: number,
-  processor: (item: T) => Promise<void>
+  processor: (item: T) => Promise<void>,
+  campaignId?: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let index = 0;
@@ -226,6 +230,13 @@ async function processConcurrently<T>(
     let hasError = false;
 
     function processNext(): void {
+      // Check if campaign is paused
+      if (campaignId && pausedCampaigns.has(campaignId)) {
+        // If paused, wait 1 second and check again
+        setTimeout(() => processNext(), 1000);
+        return;
+      }
+
       // If we've processed all items or there's an error, check if we're done
       if (index >= items.length) {
         if (activeWorkers === 0) {
@@ -1085,7 +1096,7 @@ export function registerRoutes(app: Express) {
             // Atomic increment - no race conditions
             await storage.incrementCampaignFailed(campaign.id);
           }
-        }).catch(async (error) => {
+        }, campaign.id).catch(async (error) => {
           console.error(`❌ Fatal error in campaign ${campaign.id} background processing:`, error);
           // Mark campaign as failed
           try {
@@ -1177,7 +1188,7 @@ export function registerRoutes(app: Express) {
         } catch (error) {
           console.error("Error creating call:", error);
         }
-      }).catch(async (error) => {
+      }, id).catch(async (error) => {
         console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
         // Mark campaign as failed
         try {
@@ -1194,8 +1205,8 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Stop/pause a campaign
-  app.post("/api/campaigns/:id/stop", isAuthenticated, async (req: Request, res: Response) => {
+  // Pause a campaign (stops creating new calls, but lets active calls finish)
+  app.post("/api/campaigns/:id/pause", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const userId = getUserId(req);
@@ -1213,12 +1224,182 @@ export function registerRoutes(app: Express) {
         return res.status(400).json({ message: "Campaign is not active" });
       }
 
+      // Add to paused campaigns set
+      pausedCampaigns.add(id);
+      await storage.updateCampaignStatus(id, 'paused');
+      
+      console.log(`⏸️ Campaign ${id} paused`);
+      const updatedCampaign = await storage.getCampaign(id);
+      res.json(updatedCampaign);
+    } catch (error: any) {
+      console.error("Error pausing campaign:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Resume a paused campaign
+  app.post("/api/campaigns/:id/resume", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      if (campaign.status !== 'paused') {
+        return res.status(400).json({ message: "Campaign is not paused" });
+      }
+
+      // Remove from paused campaigns set
+      pausedCampaigns.delete(id);
+      await storage.updateCampaignStatus(id, 'active');
+      
+      console.log(`▶️ Campaign ${id} resumed`);
+      const updatedCampaign = await storage.getCampaign(id);
+      res.json(updatedCampaign);
+    } catch (error: any) {
+      console.error("Error resuming campaign:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Stop/cancel a campaign completely
+  app.post("/api/campaigns/:id/stop", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      if (campaign.status !== 'active' && campaign.status !== 'paused') {
+        return res.status(400).json({ message: "Campaign is not active or paused" });
+      }
+
+      // Remove from paused set if it was paused
+      pausedCampaigns.delete(id);
       await storage.stopCampaign(id);
 
       const updatedCampaign = await storage.getCampaign(id);
       res.json(updatedCampaign);
     } catch (error: any) {
       console.error("Error stopping campaign:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Retry failed calls in a campaign
+  app.post("/api/campaigns/:id/retry-failed", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Get all failed calls (status = 'failed' or disconnection_reason in error reasons)
+      const allCalls = await storage.getCallsByCampaign(id);
+      const failedCalls = allCalls.filter(call => 
+        call.callStatus === 'failed' || 
+        (call.disconnectionReason && ['dial_failed', 'dial_busy', 'error'].includes(call.disconnectionReason))
+      );
+
+      if (failedCalls.length === 0) {
+        return res.status(400).json({ message: "No failed calls to retry" });
+      }
+
+      console.log(`🔄 Retrying ${failedCalls.length} failed calls for campaign ${id}`);
+
+      // Get phone numbers for failed calls
+      const phoneNumberMap = new Map();
+      for (const call of failedCalls) {
+        // Extract phone number from toNumber
+        phoneNumberMap.set(call.toNumber, call);
+      }
+
+      // Get phone list numbers
+      const phoneNumbers = await storage.getPhoneNumbersByList(campaign.listId);
+      const numbersToRetry = phoneNumbers.filter(pn => {
+        const formatted = pn.phoneNumber.startsWith('+') 
+          ? pn.phoneNumber 
+          : `+1${pn.phoneNumber.replace(/[^0-9]/g, '')}`;
+        return phoneNumberMap.has(formatted);
+      });
+
+      // Start retrying in background
+      void processConcurrently(numbersToRetry, 20, async (phoneNumber) => {
+        try {
+          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+          const retellCall = await retellService.createPhoneCall({
+            from_number: fromNum,
+            to_number: phoneNumber.phoneNumber,
+            override_agent_id: campaign.agentId,
+            metadata: {
+              campaignId: id,
+              listId: campaign.listId,
+              phoneNumberId: phoneNumber.id,
+              retry: true,
+            },
+          });
+
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+            
+          await storage.createCall({
+            id: retellCall.call_id,
+            userId,
+            campaignId: id,
+            agentId: campaign.agentId,
+            fromNumber: fromNum,
+            toNumber: toNumber,
+            callStatus: retellCall.call_status || 'queued',
+            startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
+            endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
+            durationMs: retellCall.duration_ms || null,
+            disconnectionReason: retellCall.disconnection_reason || null,
+          });
+
+          await storage.createCallLog({
+            id: randomUUID(),
+            callId: retellCall.call_id,
+            transcript: null,
+            recordingUrl: null,
+            callSummary: null,
+            callSuccessful: null,
+            userSentiment: null,
+            inVoicemail: null,
+          });
+
+          console.log(`✅ Retry call created for ${toNumber}`);
+        } catch (error) {
+          console.error("Error retrying call:", error);
+        }
+      }, id).catch(async (error) => {
+        console.error(`❌ Error in retry process for campaign ${id}:`, error);
+      });
+
+      res.json({ message: `Retrying ${failedCalls.length} failed calls`, retriedCount: failedCalls.length });
+    } catch (error: any) {
+      console.error("Error retrying failed calls:", error);
       res.status(500).json({ message: error.message });
     }
   });
