@@ -1093,6 +1093,43 @@ export function registerRoutes(app: Express) {
             await storage.incrementCampaignInProgress(campaign.id);
           } catch (error) {
             console.error("Error creating call:", error);
+            
+            // Save failed call attempt to DB so it can be retried later
+            const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+              ? phoneNumber.phoneNumber 
+              : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+            
+            try {
+              const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+              await storage.createCall({
+                id: randomUUID(),
+                userId,
+                campaignId: campaign.id,
+                agentId,
+                fromNumber: fromNum,
+                toNumber: toNumber,
+                callStatus: 'failed',
+                startTimestamp: null,
+                endTimestamp: null,
+                durationMs: null,
+                disconnectionReason: 'error',
+                canRetry: true, // Mark as retriable
+              });
+
+              await storage.createCallLog({
+                id: randomUUID(),
+                callId: randomUUID(),
+                transcript: null,
+                recordingUrl: null,
+                callSummary: null,
+                callSuccessful: null,
+                userSentiment: null,
+                inVoicemail: null,
+              });
+            } catch (dbError) {
+              console.error("Error saving failed call to DB:", dbError);
+            }
+            
             // Atomic increment - no race conditions
             await storage.incrementCampaignFailed(campaign.id);
           }
@@ -1187,6 +1224,44 @@ export function registerRoutes(app: Express) {
           });
         } catch (error) {
           console.error("Error creating call:", error);
+          
+          // Save failed call attempt to DB so it can be retried later
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+          
+          try {
+            const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+            await storage.createCall({
+              id: randomUUID(),
+              userId,
+              campaignId: id,
+              agentId: campaign.agentId,
+              fromNumber: fromNum,
+              toNumber: toNumber,
+              callStatus: 'failed',
+              startTimestamp: null,
+              endTimestamp: null,
+              durationMs: null,
+              disconnectionReason: 'error',
+              canRetry: true,
+            });
+
+            await storage.createCallLog({
+              id: randomUUID(),
+              callId: randomUUID(),
+              transcript: null,
+              recordingUrl: null,
+              callSummary: null,
+              callSuccessful: null,
+              userSentiment: null,
+              inVoicemail: null,
+            });
+          } catch (dbError) {
+            console.error("Error saving failed call to DB:", dbError);
+          }
+          
+          await storage.incrementCampaignFailed(id);
         }
       }, id).catch(async (error) => {
         console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
