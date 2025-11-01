@@ -143,6 +143,27 @@ Core entities:
 
 ## Recent Changes (November 1, 2025)
 
+### Appointments Page & Badge Counter (Nov 1, 2025)
+- Created dedicated `/appointments` page to view all scheduled appointments
+- Added smart filters: All, Verified in Cal.com, Not Verified
+- Search functionality by customer name, phone, or call ID
+- Displays 3 stat cards: Total Appointments, Verified, Not Verified
+- Added appointment count badge to sidebar menu (auto-updates)
+- Lightweight `/api/calls/stats/appointments` endpoint for efficient counting
+- Fixed Cal.com verification badges to use Lucide icons (removed emojis)
+- Moved CallAnalysisResult type to shared/schema.ts for type safety
+
+### Cal.com Re-verification Feature (Nov 1, 2025)
+- Added `/api/calls/:id/reverify-calcom` endpoint to re-verify individual calls
+- Added `/api/calls/auto-verify-appointments` endpoint to bulk verify all unverified appointments
+- "Re-verify with Cal.com" button in call detail page for appointments
+- **Automatic verification**: Appointments page now auto-verifies all appointments with Cal.com on mount
+- Allows updating verification for calls analyzed before Cal.com integration
+- Shows loading state while verifying
+- Automatically updates all caches after verification
+
+## Recent Changes (November 1, 2025)
+
 ### Cal.com Integration - Complete Implementation
 **Phase 1: Settings Infrastructure**
 - Added `calcomApiKey` and `calcomEventTypeId` fields to `users` table for per-user Cal.com configuration

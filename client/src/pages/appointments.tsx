@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +30,34 @@ export default function Appointments() {
     queryKey: ["/api/calls"],
     refetchInterval: 5000,
   });
+
+  // Auto-verify appointments mutation
+  const autoVerifyMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', '/api/calls/auto-verify-appointments');
+    },
+    onSuccess: (response: any) => {
+      if (response.verified > 0) {
+        queryClient.invalidateQueries({ queryKey: ['/api/calls'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/calls/stats/appointments'] });
+      }
+    },
+    onError: (error: any) => {
+      // Silently ignore missing credentials error
+      if (!error.message?.includes('Cal.com credentials not configured')) {
+        console.error('Auto-verification error:', error);
+      }
+    },
+  });
+
+  // Auto-verify on mount (only once, prevent double-run in React strict mode)
+  useEffect(() => {
+    let didRun = false;
+    if (!didRun) {
+      autoVerifyMutation.mutate();
+      didRun = true;
+    }
+  }, []);
 
   // Filter only calls with appointments scheduled
   const appointmentCalls = calls?.filter((call) => {

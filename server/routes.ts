@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "./storage";
 import { retellService } from "./retellService";
 import { openaiService } from "./openaiService";
+import { createCalcomService } from "./calcomService";
 import { isAuthenticated } from "./auth";
 import passport from "passport";
 import bcrypt from "bcrypt";
@@ -1047,6 +1048,154 @@ export function registerRoutes(app: Express) {
       });
     } catch (error: any) {
       console.error('Error analyzing calls in batch:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Re-verify appointment with Cal.com
+  app.post("/api/calls/:id/reverify-calcom", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      
+      // Get the call
+      const call = await storage.getCall(id);
+      if (!call) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+      
+      // Security check
+      if (call.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      // Get current AI analysis
+      const currentAnalysis = call.aiAnalysis as any;
+      if (!currentAnalysis?.appointmentScheduled) {
+        return res.status(400).json({ message: "No appointment detected in this call" });
+      }
+      
+      // Get user settings for Cal.com credentials
+      const user = await storage.getUser(userId);
+      if (!user?.calcomApiKey || !user?.calcomEventTypeId) {
+        return res.status(400).json({ message: "Cal.com credentials not configured" });
+      }
+      
+      // Verify with Cal.com
+      const calcomService = createCalcomService(user.calcomApiKey, user.calcomEventTypeId);
+      const verification = await calcomService.verifyAppointment(
+        call.toNumber,
+        currentAnalysis.appointmentDetails,
+        call.startTimestamp || call.createdAt || undefined
+      );
+      
+      // Update the analysis with Cal.com verification
+      const updatedAnalysis = {
+        ...currentAnalysis,
+        calcomVerification: {
+          verified: verification.verified,
+          bookingId: verification.booking?.id,
+          bookingUid: verification.booking?.uid,
+          bookingStart: verification.booking?.start,
+          bookingEnd: verification.booking?.end,
+          message: verification.message,
+          checkedAt: new Date().toISOString(),
+        },
+        // Update customer name if Cal.com has it
+        customerName: verification.booking?.attendees?.[0]?.name || currentAnalysis.customerName,
+      };
+      
+      // Store the updated analysis
+      await storage.updateCall(id, {
+        aiAnalysis: updatedAnalysis as any,
+      });
+      
+      res.json({
+        message: "Cal.com verification completed",
+        verification: updatedAnalysis.calcomVerification
+      });
+    } catch (error: any) {
+      console.error('Error re-verifying with Cal.com:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Auto-verify all appointments with Cal.com
+  app.post("/api/calls/auto-verify-appointments", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      
+      // Get user's Cal.com credentials
+      const user = await storage.getUser(userId);
+      if (!user?.calcomApiKey || !user?.calcomEventTypeId) {
+        return res.status(400).json({ message: "Cal.com credentials not configured" });
+      }
+      
+      // Get all calls with appointments that don't have Cal.com verification yet
+      const allCalls = await storage.listCalls(userId);
+      const callsToVerify = allCalls.filter((call: any) => {
+        const analysis = call.aiAnalysis;
+        return analysis?.appointmentScheduled === true && !analysis?.calcomVerification;
+      });
+      
+      if (callsToVerify.length === 0) {
+        return res.json({ 
+          message: "No appointments to verify",
+          verified: 0,
+          total: 0
+        });
+      }
+      
+      // Verify each call with Cal.com
+      const calcomService = createCalcomService(user.calcomApiKey, user.calcomEventTypeId);
+      let verified = 0;
+      let errors = 0;
+      
+      for (const call of callsToVerify) {
+        try {
+          const currentAnalysis = call.aiAnalysis as any;
+          
+          const verification = await calcomService.verifyAppointment(
+            call.toNumber,
+            currentAnalysis.appointmentDetails,
+            call.startTimestamp || call.createdAt || undefined
+          );
+          
+          // Update the analysis with Cal.com verification
+          const updatedAnalysis = {
+            ...currentAnalysis,
+            calcomVerification: {
+              verified: verification.verified,
+              bookingId: verification.booking?.id,
+              bookingUid: verification.booking?.uid,
+              bookingStart: verification.booking?.start,
+              bookingEnd: verification.booking?.end,
+              message: verification.message,
+              checkedAt: new Date().toISOString(),
+            },
+            // Update customer name if Cal.com has it
+            customerName: verification.booking?.attendees?.[0]?.name || currentAnalysis.customerName,
+          };
+          
+          await storage.updateCall(call.id, {
+            aiAnalysis: updatedAnalysis as any,
+          });
+          
+          verified++;
+        } catch (error: any) {
+          console.error(`Error verifying call ${call.id}:`, error);
+          errors++;
+        }
+      }
+      
+      res.json({
+        message: `Verified ${verified} appointments with Cal.com`,
+        verified,
+        errors,
+        total: callsToVerify.length
+      });
+    } catch (error: any) {
+      console.error('Error auto-verifying appointments:', error);
       res.status(500).json({ message: error.message });
     }
   });

@@ -73,7 +73,7 @@ function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }>
   );
 }
 
-function ChatGPTAnalysisDisplay({ analysis }: { analysis: any }) {
+function ChatGPTAnalysisDisplay({ analysis, onReverifyCalcom, isReverifying }: { analysis: any; onReverifyCalcom?: () => void; isReverifying?: boolean }) {
   return (
     <div className="border-2 border-primary/20 rounded-lg p-4 bg-primary/5 space-y-4">
       <div className="flex items-center gap-2 mb-3">
@@ -240,11 +240,39 @@ function ChatGPTAnalysisDisplay({ analysis }: { analysis: any }) {
             </div>
           )}
 
-          <div className="mt-3">
+          <div className="mt-3 flex items-center justify-between gap-2">
             <p className="text-xs text-blue-700 dark:text-blue-300">
               {analysis.calcomVerification.message}
             </p>
           </div>
+        </div>
+      )}
+      
+      {/* Re-verify button for appointments */}
+      {analysis.appointmentScheduled && onReverifyCalcom && (
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReverifyCalcom}
+            disabled={isReverifying}
+            className="w-full"
+            data-testid="button-reverify-calcom"
+          >
+            {isReverifying ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                </svg>
+                {analysis.calcomVerification ? 'Re-verify with Cal.com' : 'Verify with Cal.com'}
+              </>
+            )}
+          </Button>
         </div>
       )}
     </div>
@@ -301,6 +329,28 @@ export default function CallDetail() {
       toast({
         title: "Analysis failed",
         description: error.message || "Failed to analyze call",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reverifyCalcomMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/calls/${callId}/reverify-calcom`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/calls/${callId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/calls'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/calls/stats/appointments'] });
+      toast({
+        title: "Cal.com verification updated",
+        description: "Appointment verified with latest Cal.com data",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Verification failed",
+        description: error.message || "Failed to verify with Cal.com",
         variant: "destructive",
       });
     },
@@ -624,7 +674,13 @@ export default function CallDetail() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {call?.aiAnalysis && <ChatGPTAnalysisDisplay analysis={call.aiAnalysis} />}
+              {call?.aiAnalysis && (
+                <ChatGPTAnalysisDisplay 
+                  analysis={call.aiAnalysis}
+                  onReverifyCalcom={() => reverifyCalcomMutation.mutate()}
+                  isReverifying={reverifyCalcomMutation.isPending}
+                />
+              )}
 
               {callLog?.callSummary && (
                 <div className="border-t pt-4">
