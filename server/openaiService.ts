@@ -166,9 +166,13 @@ Provide a clear, concise explanation in Spanish of what happened and why no appo
     // Process in batches of 50 for efficiency
     const batchSize = 50;
     const results: { hispanic: boolean; name: string }[] = [];
+    const totalBatches = Math.ceil(names.length / batchSize);
 
     for (let i = 0; i < names.length; i += batchSize) {
       const batch = names.slice(i, i + batchSize);
+      const currentBatch = Math.floor(i / batchSize) + 1;
+      
+      console.log(`Processing batch ${currentBatch}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, names.length)} of ${names.length} names)...`);
       
       const prompt = `Analyze the following list of names and determine if each person is likely Hispanic/Latino or not. 
       
@@ -217,13 +221,18 @@ Example response:
         const parsed = JSON.parse(response);
         const batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
         results.push(...batchResults);
+        
+        // Log progress
+        const percentComplete = Math.round((currentBatch / totalBatches) * 100);
+        console.log(`✓ Batch ${currentBatch}/${totalBatches} complete (${percentComplete}% total)`);
       } catch (error: any) {
-        console.error('Error classifying names batch:', error);
+        console.error(`✗ Error classifying batch ${currentBatch}/${totalBatches}:`, error.message);
         // On error, mark all names in batch as non-hispanic (safe default)
         results.push(...batch.map(name => ({ name, hispanic: false })));
       }
     }
 
+    console.log(`✓ Classification complete: ${results.length} names processed`);
     return results;
   }
 }
