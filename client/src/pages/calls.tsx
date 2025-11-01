@@ -167,7 +167,6 @@ export default function Calls() {
                   <TableRow>
                     <TableHead>Call ID</TableHead>
                     <TableHead>To Number</TableHead>
-                    <TableHead>From Number</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Timestamp</TableHead>
@@ -184,7 +183,6 @@ export default function Calls() {
                     >
                       <TableCell className="font-mono text-xs">{call.id}</TableCell>
                       <TableCell className="font-medium">{call.toNumber}</TableCell>
-                      <TableCell className="text-muted-foreground">{call.fromNumber}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusColor(call.callStatus)}>
                           {call.callStatus}
