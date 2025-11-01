@@ -1095,6 +1095,27 @@ export function registerRoutes(app: Express) {
               llmTokenUsage: event.call.llm_token_usage || null,
               latency: event.call.latency || null,
             });
+
+            // Automatically analyze with ChatGPT if transcript is available
+            if (event.call.transcript) {
+              try {
+                const call = await storage.getCall(event.call.call_id);
+                const analysis = await openaiService.analyzeCall(
+                  event.call.transcript,
+                  event.call.duration_ms || call?.durationMs || undefined
+                );
+                
+                // Store ChatGPT analysis
+                await storage.updateCall(event.call.call_id, {
+                  aiAnalysis: analysis as any,
+                });
+                
+                console.log(`✅ Auto-analyzed call ${event.call.call_id} - Appointment: ${analysis.appointmentScheduled ? 'YES' : 'NO'}`);
+              } catch (aiError) {
+                console.error(`Error auto-analyzing call ${event.call.call_id}:`, aiError);
+                // Don't fail the webhook if AI analysis fails
+              }
+            }
           }
           break;
       }

@@ -12,6 +12,8 @@ export interface CallAnalysisResult {
   customerIntent: string;
   callQuality: 'excellent' | 'good' | 'fair' | 'poor';
   notes: string;
+  appointmentScheduled: boolean;
+  appointmentDetails?: string;
 }
 
 export class OpenAIService {
@@ -37,6 +39,8 @@ Please provide:
 5. Customer's main intent or goal for the call
 6. Call quality assessment (excellent, good, fair, or poor)
 7. Additional notes or observations
+8. **IMPORTANT**: Did the customer schedule an appointment? (true/false)
+9. If an appointment was scheduled, provide details (date, time, type of appointment)
 
 Format your response as a JSON object with these fields:
 - summary (string)
@@ -45,7 +49,9 @@ Format your response as a JSON object with these fields:
 - actionItems (array of strings)
 - customerIntent (string)
 - callQuality (string: "excellent", "good", "fair", or "poor")
-- notes (string)`;
+- notes (string)
+- appointmentScheduled (boolean: true if customer scheduled an appointment, false otherwise)
+- appointmentDetails (string, optional: details about the appointment if scheduled)`;
 
     try {
       const completion = await openai.chat.completions.create({
