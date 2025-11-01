@@ -34,7 +34,7 @@ export interface IStorage {
   getUserWithPassword(email: string): Promise<any | undefined>;
   createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
-  updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User | undefined>;
+  updateUserSettings(id: string, settings: { defaultAgentId?: string; calcomApiKey?: string; calcomEventTypeId?: string }): Promise<User | undefined>;
 
   // Agent operations
   createAgent(userId: string, agent: InsertAgent & { id?: string }): Promise<Agent>;
@@ -109,6 +109,8 @@ export class DatabaseStorage implements IStorage {
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
       defaultAgentId: users.defaultAgentId,
+      calcomApiKey: users.calcomApiKey,
+      calcomEventTypeId: users.calcomEventTypeId,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).where(eq(users.id, id));
@@ -123,6 +125,8 @@ export class DatabaseStorage implements IStorage {
       lastName: users.lastName,
       profileImageUrl: users.profileImageUrl,
       defaultAgentId: users.defaultAgentId,
+      calcomApiKey: users.calcomApiKey,
+      calcomEventTypeId: users.calcomEventTypeId,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     }).from(users).where(eq(users.email, email));
@@ -152,6 +156,8 @@ export class DatabaseStorage implements IStorage {
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,
       defaultAgentId: user.defaultAgentId,
+      calcomApiKey: user.calcomApiKey,
+      calcomEventTypeId: user.calcomEventTypeId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -177,18 +183,31 @@ export class DatabaseStorage implements IStorage {
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,
       defaultAgentId: user.defaultAgentId,
+      calcomApiKey: user.calcomApiKey,
+      calcomEventTypeId: user.calcomEventTypeId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
-  async updateUserSettings(id: string, settings: { defaultAgentId?: string }): Promise<User | undefined> {
+  async updateUserSettings(id: string, settings: { defaultAgentId?: string; calcomApiKey?: string; calcomEventTypeId?: string }): Promise<User | undefined> {
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+    
+    if (settings.defaultAgentId !== undefined) {
+      updateData.defaultAgentId = settings.defaultAgentId || null;
+    }
+    if (settings.calcomApiKey !== undefined) {
+      updateData.calcomApiKey = settings.calcomApiKey || null;
+    }
+    if (settings.calcomEventTypeId !== undefined) {
+      updateData.calcomEventTypeId = settings.calcomEventTypeId || null;
+    }
+    
     const [user] = await db
       .update(users)
-      .set({
-        defaultAgentId: settings.defaultAgentId || null,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(users.id, id))
       .returning();
 
@@ -203,6 +222,8 @@ export class DatabaseStorage implements IStorage {
       lastName: user.lastName,
       profileImageUrl: user.profileImageUrl,
       defaultAgentId: user.defaultAgentId,
+      calcomApiKey: user.calcomApiKey,
+      calcomEventTypeId: user.calcomEventTypeId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

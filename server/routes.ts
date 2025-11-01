@@ -127,13 +127,25 @@ export function registerRoutes(app: Express) {
   app.patch("/api/user/settings", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const { defaultAgentId } = z.object({
+      const { defaultAgentId, calcomApiKey, calcomEventTypeId } = z.object({
         defaultAgentId: z.string().optional(),
+        calcomApiKey: z.string().optional(),
+        calcomEventTypeId: z.string().optional(),
       }).parse(req.body);
       
-      // Normalize empty string to undefined
-      const normalizedAgentId = defaultAgentId?.trim() || undefined;
-      const user = await storage.updateUserSettings(userId, { defaultAgentId: normalizedAgentId });
+      // Normalize empty strings to undefined
+      const settings: any = {};
+      if (defaultAgentId !== undefined) {
+        settings.defaultAgentId = defaultAgentId?.trim() || undefined;
+      }
+      if (calcomApiKey !== undefined) {
+        settings.calcomApiKey = calcomApiKey?.trim() || undefined;
+      }
+      if (calcomEventTypeId !== undefined) {
+        settings.calcomEventTypeId = calcomEventTypeId?.trim() || undefined;
+      }
+      
+      const user = await storage.updateUserSettings(userId, settings);
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
