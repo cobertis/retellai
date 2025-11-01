@@ -176,7 +176,7 @@ export default function Calls() {
                 <TableBody>
                   {filteredCalls?.map((call) => (
                     <TableRow key={call.id} className="hover-elevate" data-testid={`row-call-${call.id}`}>
-                      <TableCell className="font-mono text-xs">{call.id.substring(0, 12)}...</TableCell>
+                      <TableCell className="font-mono text-xs">{call.id}</TableCell>
                       <TableCell className="font-medium">{call.toNumber}</TableCell>
                       <TableCell className="text-muted-foreground">{call.fromNumber}</TableCell>
                       <TableCell>
