@@ -1,31 +1,9 @@
 import OpenAI from 'openai';
+import type { CallAnalysisResult } from '@shared/schema';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-export interface CallAnalysisResult {
-  summary: string;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  keyTopics: string[];
-  actionItems: string[];
-  customerIntent: string;
-  callQuality: 'excellent' | 'good' | 'fair' | 'poor';
-  notes: string;
-  appointmentScheduled: boolean;
-  appointmentDetails?: string;
-  customerName?: string;
-  noAppointmentReason?: string;
-  calcomVerification?: {
-    verified: boolean;
-    bookingId?: number;
-    bookingUid?: string;
-    bookingStart?: string;
-    bookingEnd?: string;
-    message: string;
-    checkedAt: string;
-  };
-}
 
 export class OpenAIService {
   async analyzeCall(transcript: string, callDuration?: number): Promise<CallAnalysisResult> {

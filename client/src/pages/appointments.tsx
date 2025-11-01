@@ -8,9 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Search, ExternalLink, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Calendar, Search, ExternalLink, Clock, CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
 import { format } from "date-fns";
-import type { Call } from "@shared/schema";
+import type { Call, CallAnalysisResult } from "@shared/schema";
 
 const formatDuration = (ms: number | null) => {
   if (!ms) return '-';
@@ -32,12 +32,12 @@ export default function Appointments() {
 
   // Filter only calls with appointments scheduled
   const appointmentCalls = calls?.filter((call) => {
-    const analysis = call.aiAnalysis as any;
+    const analysis = call.aiAnalysis as CallAnalysisResult | null;
     return analysis?.appointmentScheduled === true;
   });
 
   const filteredAppointments = appointmentCalls?.filter((call) => {
-    const analysis = call.aiAnalysis as any;
+    const analysis = call.aiAnalysis as CallAnalysisResult | null;
     const calcomVerification = analysis?.calcomVerification;
     const customerName = analysis?.customerName ?? '';
 
@@ -57,7 +57,7 @@ export default function Appointments() {
   });
 
   const verifiedCount = appointmentCalls?.filter((call) => {
-    const analysis = call.aiAnalysis as any;
+    const analysis = call.aiAnalysis as CallAnalysisResult | null;
     return analysis?.calcomVerification?.verified === true;
   }).length ?? 0;
 
@@ -169,7 +169,7 @@ export default function Appointments() {
                 </TableHeader>
                 <TableBody>
                   {filteredAppointments?.map((call) => {
-                    const analysis = call.aiAnalysis as any;
+                    const analysis = call.aiAnalysis as CallAnalysisResult | null;
                     const customerName = analysis?.customerName ?? null;
                     const appointmentDetails = analysis?.appointmentDetails ?? null;
                     const calcomVerification = analysis?.calcomVerification;
@@ -207,16 +207,17 @@ export default function Appointments() {
                           <div className="flex flex-col gap-1">
                             {calcomVerification ? (
                               <>
-                                <Badge 
-                                  className={`w-fit text-xs ${
-                                    calcomVerification.verified 
-                                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                                      : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                                  }`}
-                                  data-testid={`badge-verification-${call.id}`}
-                                >
-                                  {calcomVerification.verified ? '✓ Verified' : '⚠ Not Verified'}
-                                </Badge>
+                                {calcomVerification.verified ? (
+                                  <Badge variant="default" className="w-fit gap-1" data-testid={`badge-verification-${call.id}`}>
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Verified
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="w-fit gap-1" data-testid={`badge-verification-${call.id}`}>
+                                    <AlertCircle className="h-3 w-3" />
+                                    Not Verified
+                                  </Badge>
+                                )}
                                 {calcomVerification.verified && calcomVerification.bookingStart && (
                                   <span className="text-xs text-muted-foreground">
                                     {format(new Date(calcomVerification.bookingStart), 'MMM dd, HH:mm')}
@@ -224,7 +225,8 @@ export default function Appointments() {
                                 )}
                               </>
                             ) : (
-                              <Badge className="bg-gray-600 hover:bg-gray-700 text-white w-fit text-xs">
+                              <Badge variant="outline" className="w-fit gap-1">
+                                <HelpCircle className="h-3 w-3" />
                                 Not Checked
                               </Badge>
                             )}

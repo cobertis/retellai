@@ -14,6 +14,30 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// AI Analysis Types
+export interface CallAnalysisResult {
+  summary: string;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  keyTopics: string[];
+  actionItems: string[];
+  customerIntent: string;
+  callQuality: 'excellent' | 'good' | 'fair' | 'poor';
+  notes: string;
+  appointmentScheduled: boolean;
+  appointmentDetails?: string;
+  customerName?: string;
+  noAppointmentReason?: string;
+  calcomVerification?: {
+    verified: boolean;
+    bookingId?: number;
+    bookingUid?: string;
+    bookingStart?: string;
+    bookingEnd?: string;
+    message: string;
+    checkedAt: string;
+  };
+}
+
 // Session storage table - Required for Replit Auth
 export const sessions = pgTable(
   "sessions",
