@@ -14,6 +14,7 @@ export interface CallAnalysisResult {
   notes: string;
   appointmentScheduled: boolean;
   appointmentDetails?: string;
+  customerName?: string;
 }
 
 export class OpenAIService {
@@ -41,6 +42,7 @@ Please provide:
 7. Additional notes or observations
 8. **IMPORTANT**: Did the customer schedule an appointment? (true/false)
 9. If an appointment was scheduled, provide details (date, time, type of appointment)
+10. **IMPORTANT**: Extract the customer's full name (first and last name) if they provided it during the call
 
 Format your response as a JSON object with these fields:
 - summary (string)
@@ -51,7 +53,8 @@ Format your response as a JSON object with these fields:
 - callQuality (string: "excellent", "good", "fair", or "poor")
 - notes (string)
 - appointmentScheduled (boolean: true if customer scheduled an appointment, false otherwise)
-- appointmentDetails (string, optional: details about the appointment if scheduled)`;
+- appointmentDetails (string, optional: details about the appointment if scheduled)
+- customerName (string, optional: customer's full name if provided in the call, in format "FirstName LastName")`;
 
     try {
       const completion = await openai.chat.completions.create({
