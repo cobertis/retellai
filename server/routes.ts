@@ -1315,22 +1315,19 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Get all failed calls (status = 'failed' or disconnection_reason in error reasons)
+      // Get all calls that can be retried (using the canRetry flag set by webhook)
       const allCalls = await storage.getCallsByCampaign(id);
-      const failedCalls = allCalls.filter(call => 
-        call.callStatus === 'failed' || 
-        (call.disconnectionReason && ['dial_no_answer', 'dial_failed', 'dial_busy', 'error'].includes(call.disconnectionReason))
-      );
+      const retriableCalls = allCalls.filter(call => call.canRetry === true);
 
-      if (failedCalls.length === 0) {
+      if (retriableCalls.length === 0) {
         return res.status(400).json({ message: "No failed calls to retry" });
       }
 
-      console.log(`🔄 Retrying ${failedCalls.length} failed calls for campaign ${id}`);
+      console.log(`🔄 Retrying ${retriableCalls.length} failed calls for campaign ${id}`);
 
-      // Get phone numbers for failed calls
+      // Get phone numbers for retriable calls
       const phoneNumberMap = new Map();
-      for (const call of failedCalls) {
+      for (const call of retriableCalls) {
         // Extract phone number from toNumber
         phoneNumberMap.set(call.toNumber, call);
       }
@@ -1397,7 +1394,7 @@ export function registerRoutes(app: Express) {
         console.error(`❌ Error in retry process for campaign ${id}:`, error);
       });
 
-      res.json({ message: `Retrying ${failedCalls.length} failed calls`, retriedCount: failedCalls.length });
+      res.json({ message: `Retrying ${retriableCalls.length} failed calls`, retriedCount: retriableCalls.length });
     } catch (error: any) {
       console.error("Error retrying failed calls:", error);
       res.status(500).json({ message: error.message });
