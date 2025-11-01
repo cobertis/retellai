@@ -27,6 +27,25 @@ function getUserId(req: Request): string {
   return user.id;
 }
 
+// In-memory progress tracking for lead classification
+interface ClassificationProgress {
+  status: 'processing' | 'completed' | 'error';
+  totalBatches: number;
+  completedBatches: number;
+  totalNames: number;
+  processedNames: number;
+  hispanicCount: number;
+  nonHispanicCount: number;
+  currentBatch: number;
+  errorMessage?: string;
+  hispanicListId?: string;
+  nonHispanicListId?: string;
+  hispanicListName?: string;
+  nonHispanicListName?: string;
+}
+
+const classificationProgress = new Map<string, ClassificationProgress>();
+
 // Helper function to process calls with concurrency limit
 async function processConcurrently<T>(
   items: T[],
@@ -499,7 +518,7 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // AI Lead Processing endpoint
+  // STEP 1: Upload CSV and save all numbers immediately
   app.post("/api/process-leads", isAuthenticated, upload.single('file'), async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
@@ -509,7 +528,7 @@ export function registerRoutes(app: Express) {
         return res.status(400).send("No file uploaded");
       }
 
-      console.log("Processing leads file:", file.originalname);
+      console.log("📤 Uploading leads file:", file.originalname);
 
       // Parse CSV
       const contacts: Array<{
@@ -540,7 +559,8 @@ export function registerRoutes(app: Express) {
             
             const firstName = normalizedRow['nombre'] || 
                              normalizedRow['firstname'] || 
-                             normalizedRow['first name'] || '';
+                             normalizedRow['first name'] || 
+                             normalizedRow['name'] || '';
             
             const lastName = normalizedRow['apellido'] || 
                             normalizedRow['lastname'] || 
@@ -549,7 +569,13 @@ export function registerRoutes(app: Express) {
             const email = normalizedRow['email'] || 
                          normalizedRow['correo'] || '';
             
-            const fullName = `${firstName} ${lastName}`.trim();
+            // If no firstName/lastName, try to split name
+            let fullName = '';
+            if (firstName && lastName) {
+              fullName = `${firstName} ${lastName}`.trim();
+            } else if (firstName) {
+              fullName = firstName.trim();
+            }
 
             if (phone && fullName) {
               contacts.push({
@@ -565,86 +591,52 @@ export function registerRoutes(app: Express) {
           .on('error', reject);
       });
 
-      console.log(`Parsed ${contacts.length} contacts from CSV`);
+      console.log(`✅ Parsed ${contacts.length} contacts from CSV`);
 
       if (contacts.length === 0) {
         return res.status(400).send("No valid contacts found in CSV");
       }
 
-      // Use OpenAI to classify names
-      const names = contacts.map(c => c.fullName);
-      console.log(`Classifying ${names.length} names with AI...`);
-      
-      const classifications = await openaiService.classifyNames(names);
-      
-      // Map classifications back to contacts
-      const classifiedContacts = contacts.map(contact => {
-        const classification = classifications.find(c => c.name === contact.fullName);
-        return {
-          ...contact,
-          isHispanic: classification?.hispanic || false
-        };
-      });
-
-      // Separate into two groups
-      const hispanicContacts = classifiedContacts.filter(c => c.isHispanic);
-      const nonHispanicContacts = classifiedContacts.filter(c => !c.isHispanic);
-
-      console.log(`Hispanic: ${hispanicContacts.length}, Non-Hispanic: ${nonHispanicContacts.length}`);
-
-      // Create two lists
+      // Create a single list with all contacts (will be classified later)
       const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       
-      const hispanicList = await storage.createPhoneList(userId, {
-        name: `Hispanic Leads - ${today}`,
-        description: `Automatically classified Hispanic/Latino leads from ${file.originalname}`,
-        classification: 'Hispanic/Latino',
-        tags: ['AI-Processed', 'Hispanic'],
-        totalNumbers: hispanicContacts.length,
+      const phoneList = await storage.createPhoneList(userId, {
+        name: `${file.originalname.replace('.csv', '')} - ${today}`,
+        description: `Uploaded from ${file.originalname} - Ready for AI classification`,
+        classification: null,
+        tags: ['Pending-Classification'],
+        totalNumbers: contacts.length,
       });
 
-      const nonHispanicList = await storage.createPhoneList(userId, {
-        name: `Non-Hispanic Leads - ${today}`,
-        description: `Automatically classified non-Hispanic leads from ${file.originalname}`,
-        classification: 'Non-Hispanic',
-        tags: ['AI-Processed', 'Non-Hispanic'],
-        totalNumbers: nonHispanicContacts.length,
-      });
-
-      // Add contacts to respective lists
-      for (const contact of hispanicContacts) {
+      // Save all contacts to the list with +1 prefix
+      console.log(`💾 Saving ${contacts.length} contacts to database...`);
+      for (const contact of contacts) {
+        const normalizedPhone = contact.phone.startsWith('+') 
+          ? contact.phone 
+          : `+1${contact.phone}`;
+        
         await storage.createPhoneNumber({
-          listId: hispanicList.id,
-          phoneNumber: contact.phone,
+          listId: phoneList.id,
+          phoneNumber: normalizedPhone,
           firstName: contact.firstName,
           lastName: contact.lastName,
           email: contact.email,
         });
       }
 
-      for (const contact of nonHispanicContacts) {
-        await storage.createPhoneNumber({
-          listId: nonHispanicList.id,
-          phoneNumber: contact.phone,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          email: contact.email,
-        });
-      }
+      console.log(`✅ Saved ${contacts.length} contacts. List ID: ${phoneList.id}`);
 
       res.json({
         success: true,
-        hispanicCount: hispanicContacts.length,
-        nonHispanicCount: nonHispanicContacts.length,
-        hispanicListId: hispanicList.id,
-        nonHispanicListId: nonHispanicList.id,
-        hispanicListName: hispanicList.name,
-        nonHispanicListName: nonHispanicList.name,
+        listId: phoneList.id,
+        listName: phoneList.name,
+        totalContacts: contacts.length,
+        message: "Contacts uploaded successfully. Ready for classification."
       });
 
     } catch (error: any) {
-      console.error("Error processing leads:", error);
-      res.status(500).send(error.message || "Failed to process leads");
+      console.error("❌ Error uploading leads:", error);
+      res.status(500).send(error.message || "Failed to upload leads");
     }
   });
 
