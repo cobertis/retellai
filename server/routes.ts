@@ -878,12 +878,12 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Process queued calls for a campaign (respecting 20 concurrent call limit)
+  // Process queued calls for a campaign (respecting concurrency limits)
   app.post("/api/campaigns/:id/process-queue", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const userId = getUserId(req);
-      const { maxConcurrent = 20 } = req.body;
+      const { globalMaxConcurrent = 20 } = req.body;
 
       const campaign = await storage.getCampaign(id);
       if (!campaign) {
@@ -894,15 +894,22 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Check current in-progress calls
-      const inProgressCount = await storage.getInProgressCallsCount(userId);
-      const availableSlots = Math.max(0, maxConcurrent - inProgressCount);
+      // Check both global and campaign-specific limits
+      const globalInProgressCount = await storage.getInProgressCallsCount(userId);
+      const campaignInProgressCount = await storage.getInProgressCallsCountByCampaign(id);
+      
+      const campaignLimit = campaign.concurrencyLimit || 20;
+      const globalAvailable = Math.max(0, globalMaxConcurrent - globalInProgressCount);
+      const campaignAvailable = Math.max(0, campaignLimit - campaignInProgressCount);
+      const availableSlots = Math.min(globalAvailable, campaignAvailable);
 
       if (availableSlots === 0) {
         return res.json({ 
           message: "No available slots for new calls", 
-          inProgressCount,
-          maxConcurrent,
+          globalInProgressCount,
+          campaignInProgressCount,
+          globalMaxConcurrent,
+          campaignLimit,
           processed: 0 
         });
       }
@@ -932,12 +939,13 @@ export function registerRoutes(app: Express) {
             },
           });
 
-          // Update call with Retell info
+          // Update call with Retell info and increment attempts
           await storage.updateCall(call.id, {
             callStatus: retellCall.call_status || 'registered',
             startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
             callAttempts: (call.callAttempts || 0) + 1,
             lastAttemptAt: new Date(),
+            canRetry: false, // Will be set by webhook based on outcome
           });
 
           await storage.incrementCampaignInProgress(id);
@@ -958,8 +966,10 @@ export function registerRoutes(app: Express) {
         message: `Processed ${processedCount} queued calls`,
         processed: processedCount,
         errors: errorCount,
-        inProgressCount: inProgressCount + processedCount,
-        maxConcurrent,
+        globalInProgressCount: globalInProgressCount + processedCount,
+        campaignInProgressCount: campaignInProgressCount + processedCount,
+        globalMaxConcurrent,
+        campaignLimit,
         remainingQueued: queuedCalls.length - callsToProcess.length,
       });
     } catch (error: any) {
@@ -973,7 +983,7 @@ export function registerRoutes(app: Express) {
     try {
       const { id } = req.params;
       const userId = getUserId(req);
-      const { maxRetries = 3, maxConcurrent = 20 } = req.body;
+      const { maxRetries = 3, globalMaxConcurrent = 20 } = req.body;
 
       const campaign = await storage.getCampaign(id);
       if (!campaign) {
@@ -984,15 +994,22 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Check current in-progress calls
-      const inProgressCount = await storage.getInProgressCallsCount(userId);
-      const availableSlots = Math.max(0, maxConcurrent - inProgressCount);
+      // Check both global and campaign-specific limits
+      const globalInProgressCount = await storage.getInProgressCallsCount(userId);
+      const campaignInProgressCount = await storage.getInProgressCallsCountByCampaign(id);
+      
+      const campaignLimit = campaign.concurrencyLimit || 20;
+      const globalAvailable = Math.max(0, globalMaxConcurrent - globalInProgressCount);
+      const campaignAvailable = Math.max(0, campaignLimit - campaignInProgressCount);
+      const availableSlots = Math.min(globalAvailable, campaignAvailable);
 
       if (availableSlots === 0) {
         return res.json({ 
           message: "No available slots for retries", 
-          inProgressCount,
-          maxConcurrent,
+          globalInProgressCount,
+          campaignInProgressCount,
+          globalMaxConcurrent,
+          campaignLimit,
           retried: 0 
         });
       }
@@ -1025,22 +1042,25 @@ export function registerRoutes(app: Express) {
             },
           });
 
-          // Update call with Retell info
+          // Update call with Retell info and increment attempts
           await storage.updateCall(call.id, {
             callStatus: retellCall.call_status || 'registered',
             startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
             callAttempts: (call.callAttempts || 0) + 1,
             lastAttemptAt: new Date(),
-            canRetry: false, // Reset until we know the outcome
+            canRetry: false, // Will be set by webhook based on outcome
           });
 
           await storage.incrementCampaignInProgress(id);
           retriedCount++;
         } catch (error) {
           console.error("Error retrying call:", error);
+          // Still increment attempts even on error
           await storage.updateCall(call.id, {
+            callStatus: 'failed',
             callAttempts: (call.callAttempts || 0) + 1,
             lastAttemptAt: new Date(),
+            canRetry: (call.callAttempts || 0) + 1 < maxRetries, // Only allow retry if under limit
           });
           errorCount++;
         }
@@ -1050,9 +1070,11 @@ export function registerRoutes(app: Express) {
         message: `Retried ${retriedCount} failed calls`,
         retried: retriedCount,
         errors: errorCount,
-        inProgressCount: inProgressCount + retriedCount,
-        maxConcurrent,
-        remainingRetriable: retriableCalls.length - callsToRetry.length,
+        globalInProgressCount: globalInProgressCount + retriedCount,
+        campaignInProgressCount: campaignInProgressCount + retriedCount,
+        globalMaxConcurrent,
+        campaignLimit,
+        remainingRetriable: retriableCalls.filter(c => (c.callAttempts || 0) < maxRetries).length - callsToRetry.length,
       });
     } catch (error: any) {
       console.error("Error retrying failed calls:", error);

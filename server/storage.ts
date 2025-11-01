@@ -85,6 +85,7 @@ export interface IStorage {
   getQueuedCalls(campaignId: string): Promise<Call[]>;
   getRetriableCalls(campaignId: string): Promise<Call[]>;
   getInProgressCallsCount(userId: string): Promise<number>;
+  getInProgressCallsCountByCampaign(campaignId: string): Promise<number>;
   updateCallStatus(id: string, status: string, endTimestamp?: Date, durationMs?: number, disconnectionReason?: string, canRetry?: boolean): Promise<void>;
   updateCall(id: string, data: Partial<Omit<Call, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>): Promise<void>;
 
@@ -524,6 +525,19 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(calls.userId, userId),
+          sql`${calls.callStatus} IN ('registered', 'ongoing', 'in_progress')`
+        )
+      );
+    return Number(result[0]?.count || 0);
+  }
+
+  async getInProgressCallsCountByCampaign(campaignId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(calls)
+      .where(
+        and(
+          eq(calls.campaignId, campaignId),
           sql`${calls.callStatus} IN ('registered', 'ongoing', 'in_progress')`
         )
       );
