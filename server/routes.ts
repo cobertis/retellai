@@ -2495,10 +2495,10 @@ export function registerRoutes(app: Express) {
             if (call?.campaignId) {
               await storage.handleCallEnded(call.campaignId, callSucceeded);
               
-              // Mark phone number as contacted if call was successful
-              if (callSucceeded) {
-                await storage.markPhoneNumberContacted(call.toNumber);
-              }
+              // CRITICAL FIX: Always mark phone number as contacted after ANY call attempt
+              // This prevents duplicate calls to the same number regardless of outcome
+              // (voicemail, no answer, hangup, etc. all count as "contacted")
+              await storage.markPhoneNumberContacted(call.toNumber);
             }
           }
           break;
