@@ -14,10 +14,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { Call, CallAnalysisResult } from "@shared/schema";
 
 const menuItems = [
   {
@@ -67,6 +69,12 @@ export function AppSidebar() {
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const { data: appointmentStats } = useQuery<{ count: number }>({
+    queryKey: ["/api/calls/stats/appointments"],
+  });
+
+  const appointmentCount = appointmentStats?.count ?? 0;
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", "/api/logout", undefined);
@@ -108,6 +116,11 @@ export function AppSidebar() {
                     <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
                       <item.icon className="w-4 h-4" />
                       <span>{item.title}</span>
+                      {item.title === "Appointments" && appointmentCount > 0 && (
+                        <Badge variant="secondary" className="ml-auto" data-testid="badge-appointments-count">
+                          {appointmentCount}
+                        </Badge>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

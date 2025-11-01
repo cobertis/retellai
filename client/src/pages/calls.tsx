@@ -57,6 +57,7 @@ export default function Calls() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/calls'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/calls/stats/appointments'] });
     },
   });
 

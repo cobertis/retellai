@@ -53,6 +53,7 @@ export default function Campaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["/api/calls"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calls/stats/appointments"] });
       setIsCreateOpen(false);
       setFormData({
         name: "",

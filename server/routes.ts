@@ -763,6 +763,22 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/calls/stats/appointments", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const calls = await storage.listCalls(userId);
+      
+      const appointmentCount = calls.filter((call: any) => {
+        const analysis = call.aiAnalysis;
+        return analysis?.appointmentScheduled === true;
+      }).length;
+      
+      res.json({ count: appointmentCount });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/calls/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
