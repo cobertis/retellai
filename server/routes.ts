@@ -1131,12 +1131,12 @@ export function registerRoutes(app: Express) {
                   event.call.duration_ms || call?.durationMs || undefined
                 );
                 
-                // Verify appointment with Cal.com if user has credentials and appointment was scheduled
-                if (analysis.appointmentScheduled && call) {
-                  try {
-                    const user = await storage.getUser(call.userId);
-                    
-                    if (user?.calcomApiKey && user?.calcomEventTypeId) {
+                // ALWAYS check Cal.com for appointments (whether ChatGPT detected one or not)
+                if (call) {
+                  const user = await storage.getUser(call.userId);
+                  
+                  if (user?.calcomApiKey && user?.calcomEventTypeId) {
+                    try {
                       const { createCalcomService } = await import('./calcomService');
                       const calcomService = createCalcomService(user.calcomApiKey, user.calcomEventTypeId);
                       
@@ -1149,6 +1149,7 @@ export function registerRoutes(app: Express) {
                         callTimestamp
                       );
                       
+                      // Store Cal.com verification results
                       analysis.calcomVerification = {
                         verified: verification.verified,
                         bookingId: verification.booking?.id,
@@ -1159,23 +1160,51 @@ export function registerRoutes(app: Express) {
                         checkedAt: new Date().toISOString(),
                       };
                       
-                      console.log(`📅 Cal.com verification for ${event.call.call_id}: ${verification.verified ? 'VERIFIED' : 'NOT FOUND'}`);
+                      // If Cal.com has a booking, extract customer name from booking
+                      if (verification.verified && verification.booking?.attendees) {
+                        const attendeeName = verification.booking.attendees.find(a => a.name)?.name;
+                        if (attendeeName && !analysis.customerName) {
+                          analysis.customerName = attendeeName;
+                        }
+                      }
+                      
+                      console.log(`📅 Cal.com verification for ${event.call.call_id}: ${verification.verified ? 'VERIFIED ✅' : 'NOT FOUND ❌'}`);
+                    } catch (calcomError) {
+                      console.error(`Error verifying with Cal.com for call ${event.call.call_id}:`, calcomError);
+                      // Don't fail if Cal.com check fails
                     }
-                  } catch (calcomError) {
-                    console.error(`Error verifying with Cal.com for call ${event.call.call_id}:`, calcomError);
-                    // Don't fail if Cal.com check fails
                   }
                 }
                 
-                // Store ChatGPT analysis (with Cal.com verification if available)
+                // If NO appointment was scheduled, analyze WHY
+                if (!analysis.appointmentScheduled) {
+                  try {
+                    const noAppointmentReason = await openaiService.analyzeNoAppointmentReason(
+                      event.call.transcript,
+                      event.call.duration_ms || call?.durationMs || undefined
+                    );
+                    
+                    // Add the reason to the analysis
+                    (analysis as any).noAppointmentReason = noAppointmentReason;
+                    
+                    console.log(`📝 No appointment reason for ${event.call.call_id}: ${noAppointmentReason.substring(0, 100)}...`);
+                  } catch (reasonError) {
+                    console.error(`Error analyzing no-appointment reason for call ${event.call.call_id}:`, reasonError);
+                    // Don't fail if this analysis fails
+                  }
+                }
+                
+                // Store ChatGPT analysis (with Cal.com verification and no-appointment reason if available)
                 await storage.updateCall(event.call.call_id, {
                   aiAnalysis: analysis as any,
                 });
                 
+                const appointmentStatus = analysis.appointmentScheduled ? 'YES' : 'NO';
                 const calcomStatus = analysis.calcomVerification 
-                  ? ` | Cal.com: ${analysis.calcomVerification.verified ? '✅ VERIFIED' : '❌ NOT FOUND'}` 
+                  ? ` | Cal.com: ${analysis.calcomVerification.verified ? '✅' : '❌'}` 
                   : '';
-                console.log(`✅ Auto-analyzed call ${event.call.call_id} - Appointment: ${analysis.appointmentScheduled ? 'YES' : 'NO'}${calcomStatus}`);
+                const customerName = analysis.customerName ? ` | Cliente: ${analysis.customerName}` : '';
+                console.log(`✅ Analyzed call ${event.call.call_id} - Appointment: ${appointmentStatus}${calcomStatus}${customerName}`);
               } catch (aiError) {
                 console.error(`Error auto-analyzing call ${event.call.call_id}:`, aiError);
                 // Don't fail the webhook if AI analysis fails

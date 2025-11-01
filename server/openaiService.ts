@@ -122,6 +122,62 @@ Format your response as a JSON object with these fields:
     
     return results;
   }
+
+  async analyzeNoAppointmentReason(transcript: string, callDuration?: number): Promise<string> {
+    if (!transcript || transcript.trim().length === 0) {
+      return 'No transcript available to analyze';
+    }
+
+    const durationInfo = callDuration 
+      ? `\nCall duration: ${Math.floor(callDuration / 1000)} seconds`
+      : '';
+
+    const prompt = `Analyze the following phone call transcript where NO appointment was scheduled.${durationInfo}
+
+Transcript:
+${transcript}
+
+Please provide a brief summary (2-3 sentences) explaining WHY the customer did not schedule an appointment. Consider these common reasons:
+- Customer was not interested
+- Customer wanted to think about it / call back later
+- Customer already has an appointment
+- Call went to voicemail
+- Call was disconnected / hung up early
+- Customer had questions/objections that weren't resolved
+- Wrong number / not the right person
+- Customer requested information be sent first
+- Other reason (explain)
+
+Provide a clear, concise explanation in Spanish of what happened and why no appointment was scheduled.`;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: 'Eres un analista experto de llamadas telefónicas. Proporciona explicaciones claras y concisas en español sobre por qué un cliente no agendó una cita.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+      });
+
+      const response = completion.choices[0]?.message?.content;
+      if (!response) {
+        return 'No se pudo determinar la razón';
+      }
+
+      return response.trim();
+    } catch (error: any) {
+      console.error('Error analyzing no-appointment reason:', error);
+      return 'Error al analizar la llamada';
+    }
+  }
 }
 
 export const openaiService = new OpenAIService();

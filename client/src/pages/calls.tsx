@@ -181,6 +181,7 @@ export default function Calls() {
                     const appointmentScheduled = analysis?.appointmentScheduled ?? null;
                     const customerName = analysis?.customerName ?? null;
                     const calcomVerification = analysis?.calcomVerification;
+                    const noAppointmentReason = analysis?.noAppointmentReason ?? null;
                     
                     return (
                       <TableRow 
@@ -220,9 +221,16 @@ export default function Calls() {
                                 )}
                               </>
                             ) : appointmentScheduled === false ? (
-                              <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
-                                No agendada
-                              </Badge>
+                              <>
+                                <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
+                                  No agendada
+                                </Badge>
+                                {noAppointmentReason && (
+                                  <div className="text-xs text-muted-foreground mt-1 max-w-xs" data-testid={`text-no-appointment-reason-${call.id}`}>
+                                    {noAppointmentReason}
+                                  </div>
+                                )}
+                              </>
                             ) : (
                               <span className="text-sm text-muted-foreground">-</span>
                             )}
