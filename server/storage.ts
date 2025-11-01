@@ -469,6 +469,10 @@ export class DatabaseStorage implements IStorage {
     return call;
   }
 
+  async getCallsByCampaign(campaignId: string): Promise<Call[]> {
+    return await db.select().from(calls).where(eq(calls.campaignId, campaignId));
+  }
+
   async listCalls(userId: string): Promise<Call[]> {
     return await db
       .select()
