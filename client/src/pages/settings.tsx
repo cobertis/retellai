@@ -59,7 +59,7 @@ export default function Settings() {
   });
 
   const updateCalcomMutation = useMutation({
-    mutationFn: async (data: { calcomApiKey: string; calcomEventTypeId: string }) => {
+    mutationFn: async (data: { calcomApiKey?: string | null; calcomEventTypeId?: string | null }) => {
       const response = await apiRequest("PATCH", "/api/user/settings", data);
       return response;
     },
@@ -88,8 +88,8 @@ export default function Settings() {
     const trimmedApiKey = calcomApiKey.trim();
     const trimmedEventTypeId = calcomEventTypeId.trim();
     updateCalcomMutation.mutate({
-      calcomApiKey: trimmedApiKey || undefined as any,
-      calcomEventTypeId: trimmedEventTypeId || undefined as any,
+      calcomApiKey: trimmedApiKey || null,
+      calcomEventTypeId: trimmedEventTypeId || null,
     });
   };
 

@@ -34,7 +34,7 @@ export interface IStorage {
   getUserWithPassword(email: string): Promise<any | undefined>;
   createUser(email: string, password: string, firstName?: string, lastName?: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
-  updateUserSettings(id: string, settings: { defaultAgentId?: string; calcomApiKey?: string; calcomEventTypeId?: string }): Promise<User | undefined>;
+  updateUserSettings(id: string, settings: { defaultAgentId?: string | null; calcomApiKey?: string | null; calcomEventTypeId?: string | null }): Promise<User | undefined>;
 
   // Agent operations
   createAgent(userId: string, agent: InsertAgent & { id?: string }): Promise<Agent>;
@@ -190,7 +190,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async updateUserSettings(id: string, settings: { defaultAgentId?: string; calcomApiKey?: string; calcomEventTypeId?: string }): Promise<User | undefined> {
+  async updateUserSettings(id: string, settings: { defaultAgentId?: string | null; calcomApiKey?: string | null; calcomEventTypeId?: string | null }): Promise<User | undefined> {
     const updateData: any = {
       updatedAt: new Date(),
     };

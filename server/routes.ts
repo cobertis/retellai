@@ -128,21 +128,27 @@ export function registerRoutes(app: Express) {
     try {
       const userId = getUserId(req);
       const { defaultAgentId, calcomApiKey, calcomEventTypeId } = z.object({
-        defaultAgentId: z.string().optional(),
-        calcomApiKey: z.string().optional(),
-        calcomEventTypeId: z.string().optional(),
+        defaultAgentId: z.string().nullable().optional(),
+        calcomApiKey: z.string().nullable().optional(),
+        calcomEventTypeId: z.string().nullable().optional(),
       }).parse(req.body);
       
-      // Normalize empty strings to undefined
+      // Build settings object with proper null handling
       const settings: any = {};
+      
+      // For defaultAgentId, keep undefined behavior (empty = don't change)
       if (defaultAgentId !== undefined) {
         settings.defaultAgentId = defaultAgentId?.trim() || undefined;
       }
+      
+      // For Cal.com fields, allow explicit null to clear values
       if (calcomApiKey !== undefined) {
-        settings.calcomApiKey = calcomApiKey?.trim() || undefined;
+        const trimmed = calcomApiKey?.trim();
+        settings.calcomApiKey = trimmed === null || trimmed === '' ? null : trimmed;
       }
       if (calcomEventTypeId !== undefined) {
-        settings.calcomEventTypeId = calcomEventTypeId?.trim() || undefined;
+        const trimmed = calcomEventTypeId?.trim();
+        settings.calcomEventTypeId = trimmed === null || trimmed === '' ? null : trimmed;
       }
       
       const user = await storage.updateUserSettings(userId, settings);
