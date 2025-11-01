@@ -167,6 +167,7 @@ export default function Calls() {
                   <TableRow>
                     <TableHead>Call ID</TableHead>
                     <TableHead>To Number</TableHead>
+                    <TableHead>Customer Name</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Appointment</TableHead>
                     <TableHead>Duration</TableHead>
@@ -178,6 +179,7 @@ export default function Calls() {
                   {filteredCalls?.map((call) => {
                     const analysis = call.aiAnalysis as any;
                     const appointmentScheduled = analysis?.appointmentScheduled ?? null;
+                    const customerName = analysis?.customerName ?? null;
                     
                     return (
                       <TableRow 
@@ -188,6 +190,9 @@ export default function Calls() {
                       >
                         <TableCell className="font-mono text-xs">{call.id}</TableCell>
                         <TableCell className="font-medium">{call.toNumber}</TableCell>
+                        <TableCell className="font-medium" data-testid={`text-customer-name-${call.id}`}>
+                          {customerName || <span className="text-sm text-muted-foreground">-</span>}
+                        </TableCell>
                         <TableCell>
                           <Badge variant={getStatusColor(call.callStatus)}>
                             {call.callStatus}
