@@ -213,34 +213,59 @@ async function classifyListAsync(
   }
 }
 
-// Helper function to process calls with concurrency limit
+// Helper function to process calls with dynamic concurrency limit
+// This maintains a pool of workers that automatically refills as calls complete
 async function processConcurrently<T>(
   items: T[],
   concurrencyLimit: number,
   processor: (item: T) => Promise<void>
 ): Promise<void> {
-  const results: Promise<void>[] = [];
-  let index = 0;
-  const delayBetweenCalls = 1000; // 1 second delay between each call creation
+  return new Promise((resolve, reject) => {
+    let index = 0;
+    let activeWorkers = 0;
+    let hasError = false;
 
-  async function processNext(): Promise<void> {
-    while (index < items.length) {
-      const currentIndex = index++;
-      await processor(items[currentIndex]);
-      
-      // Add delay before processing next item
-      if (index < items.length) {
-        await new Promise(resolve => setTimeout(resolve, delayBetweenCalls));
+    function processNext(): void {
+      // If we've processed all items or there's an error, check if we're done
+      if (index >= items.length) {
+        if (activeWorkers === 0) {
+          resolve();
+        }
+        return;
       }
+
+      // Don't exceed concurrency limit
+      if (activeWorkers >= concurrencyLimit) {
+        return;
+      }
+
+      // Take next item and increment counters
+      const currentIndex = index++;
+      activeWorkers++;
+
+      // Process item asynchronously
+      processor(items[currentIndex])
+        .then(() => {
+          activeWorkers--;
+          // Small delay before starting next worker to prevent overwhelming Retell API
+          setTimeout(() => processNext(), 500);
+        })
+        .catch((error) => {
+          console.error(`Error processing item ${currentIndex}:`, error);
+          activeWorkers--;
+          // Continue processing even if one fails
+          setTimeout(() => processNext(), 500);
+        });
+
+      // Try to fill up to concurrency limit
+      processNext();
     }
-  }
 
-  // Start initial batch
-  for (let i = 0; i < Math.min(concurrencyLimit, items.length); i++) {
-    results.push(processNext());
-  }
-
-  await Promise.all(results);
+    // Start initial batch of workers
+    for (let i = 0; i < Math.min(concurrencyLimit, items.length); i++) {
+      processNext();
+    }
+  });
 }
 
 export function registerRoutes(app: Express) {
