@@ -216,20 +216,22 @@ async function classifyListAsync(
   }
 }
 
-// Helper function to process calls with dynamic concurrency limit and pause/resume support
-// This maintains a pool of workers that automatically refills as calls complete
+// Helper function to process calls with strict concurrency control
+// This ensures we NEVER exceed the Retell API limit of 20 concurrent active calls
+// Items are processed sequentially with a queue - when one completes, the next starts
 async function processConcurrently<T>(
   items: T[],
   concurrencyLimit: number,
   processor: (item: T) => Promise<void>,
-  campaignId?: string
+  campaignId?: string,
+  userId?: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let index = 0;
     let activeWorkers = 0;
     let hasError = false;
 
-    function processNext(): void {
+    async function processNext(): Promise<void> {
       // Check if campaign is paused
       if (campaignId && pausedCampaigns.has(campaignId)) {
         // If paused, wait 1 second and check again
@@ -237,7 +239,7 @@ async function processConcurrently<T>(
         return;
       }
 
-      // If we've processed all items or there's an error, check if we're done
+      // If we've processed all items, check if we're done
       if (index >= items.length) {
         if (activeWorkers === 0) {
           resolve();
@@ -245,7 +247,26 @@ async function processConcurrently<T>(
         return;
       }
 
-      // Don't exceed concurrency limit
+      // Check ACTUAL active calls in Retell (not just workers)
+      // This ensures we never exceed Retell's 20 concurrent call limit
+      let actualActiveCalls = 0;
+      if (userId) {
+        try {
+          actualActiveCalls = await storage.getInProgressCallsCount(userId);
+        } catch (error) {
+          console.error("Error checking active calls:", error);
+        }
+      }
+
+      // Wait if we're at or over the limit
+      if (actualActiveCalls >= concurrencyLimit) {
+        console.log(`⏸️  Queue waiting... (${actualActiveCalls}/${concurrencyLimit} active calls, ${items.length - index} remaining)`);
+        // Wait 2 seconds and check again
+        setTimeout(() => processNext(), 2000);
+        return;
+      }
+
+      // Don't exceed worker limit either (backup safety)
       if (activeWorkers >= concurrencyLimit) {
         return;
       }
@@ -254,11 +275,13 @@ async function processConcurrently<T>(
       const currentIndex = index++;
       activeWorkers++;
 
+      console.log(`🚀 Processing ${currentIndex + 1}/${items.length} (${actualActiveCalls} active calls)`);
+
       // Process item asynchronously
       processor(items[currentIndex])
         .then(() => {
           activeWorkers--;
-          // Small delay before starting next worker to prevent overwhelming Retell API
+          // Delay before starting next to prevent API rate limiting
           setTimeout(() => processNext(), 500);
         })
         .catch((error) => {
@@ -268,12 +291,12 @@ async function processConcurrently<T>(
           setTimeout(() => processNext(), 500);
         });
 
-      // Try to fill up to concurrency limit
+      // Try to fill up to concurrency limit (but check active calls first)
       processNext();
     }
 
-    // Start initial batch of workers
-    for (let i = 0; i < Math.min(concurrencyLimit, items.length); i++) {
+    // Start initial batch of workers (reduced to prevent overwhelming API)
+    for (let i = 0; i < Math.min(5, items.length); i++) {
       processNext();
     }
   });
@@ -1133,7 +1156,7 @@ export function registerRoutes(app: Express) {
             // Atomic increment - no race conditions
             await storage.incrementCampaignFailed(campaign.id);
           }
-        }, campaign.id).catch(async (error) => {
+        }, campaign.id, userId).catch(async (error) => {
           console.error(`❌ Fatal error in campaign ${campaign.id} background processing:`, error);
           // Mark campaign as failed
           try {
@@ -1263,7 +1286,7 @@ export function registerRoutes(app: Express) {
           
           await storage.incrementCampaignFailed(id);
         }
-      }, id).catch(async (error) => {
+      }, id, userId).catch(async (error) => {
         console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
         // Mark campaign as failed
         try {
@@ -1475,7 +1498,7 @@ export function registerRoutes(app: Express) {
         } catch (error) {
           console.error("Error retrying call:", error);
         }
-      }, id).catch(async (error) => {
+      }, id, userId).catch(async (error) => {
         console.error(`❌ Error in retry process for campaign ${id}:`, error);
       });
 
