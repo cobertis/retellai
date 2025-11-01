@@ -45,7 +45,7 @@ export class CalcomService {
   }
 
   async getBookings(filters?: {
-    status?: 'accepted' | 'pending' | 'cancelled' | 'rejected';
+    status?: 'upcoming' | 'recurring' | 'past' | 'cancelled' | 'unconfirmed';
     afterStart?: string;
     beforeEnd?: string;
     attendeeEmail?: string;
@@ -95,7 +95,7 @@ export class CalcomService {
 
   async findBookingByPhoneNumber(phoneNumber: string): Promise<CalcomBooking | null> {
     try {
-      const bookings = await this.getBookings({ status: 'accepted' });
+      const bookings = await this.getBookings({ status: 'upcoming' });
       
       const normalizedPhone = phoneNumber.replace(/\D/g, '');
       
@@ -135,7 +135,7 @@ export class CalcomService {
       windowEnd.setDate(windowEnd.getDate() + 30);
       
       const bookings = await this.getBookings({ 
-        status: 'accepted',
+        status: 'upcoming',
         afterStart: now.toISOString(),
         beforeEnd: windowEnd.toISOString(),
       });
