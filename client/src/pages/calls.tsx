@@ -96,7 +96,40 @@ export default function Calls() {
       call.toNumber.includes(search) ||
       (call.fromNumber && call.fromNumber.includes(search)) ||
       call.id.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || call.callStatus === statusFilter;
+    
+    // Enhanced status filtering
+    let matchesStatus = true;
+    if (statusFilter !== "all") {
+      const analysis = call.aiAnalysis as any;
+      const appointmentScheduled = analysis?.appointmentScheduled ?? null;
+      
+      switch (statusFilter) {
+        case "in_progress":
+          matchesStatus = ['registered', 'ongoing', 'in_progress', 'queued'].includes(call.callStatus);
+          break;
+        case "completed":
+          matchesStatus = ['completed', 'ended'].includes(call.callStatus);
+          break;
+        case "appointments":
+          matchesStatus = appointmentScheduled === true;
+          break;
+        case "no_answer":
+          matchesStatus = call.disconnectionReason === 'dial_no_answer';
+          break;
+        case "hung_up":
+          matchesStatus = ['user_hangup', 'agent_hangup'].includes(call.disconnectionReason || '');
+          break;
+        case "failed":
+          matchesStatus = ['dial_failed', 'dial_busy', 'error', 'failed'].includes(call.disconnectionReason || call.callStatus);
+          break;
+        case "retriable":
+          matchesStatus = call.canRetry === true;
+          break;
+        default:
+          matchesStatus = call.callStatus === statusFilter;
+      }
+    }
+    
     return matchesSearch && matchesStatus;
   });
 
@@ -121,15 +154,18 @@ export default function Calls() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-status-filter">
-            <SelectValue placeholder="Filter by status" />
+          <SelectTrigger className="w-full sm:w-[220px]" data-testid="select-status-filter">
+            <SelectValue placeholder="Filter by outcome" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="queued">Queued</SelectItem>
+            <SelectItem value="all">All Calls</SelectItem>
             <SelectItem value="in_progress">In Progress</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="appointments">Appointments Scheduled</SelectItem>
+            <SelectItem value="no_answer">No Answer</SelectItem>
+            <SelectItem value="hung_up">Hung Up</SelectItem>
+            <SelectItem value="failed">Failed/Busy</SelectItem>
+            <SelectItem value="retriable">Can Retry</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -878,6 +878,188 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Process queued calls for a campaign (respecting 20 concurrent call limit)
+  app.post("/api/campaigns/:id/process-queue", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      const { maxConcurrent = 20 } = req.body;
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Check current in-progress calls
+      const inProgressCount = await storage.getInProgressCallsCount(userId);
+      const availableSlots = Math.max(0, maxConcurrent - inProgressCount);
+
+      if (availableSlots === 0) {
+        return res.json({ 
+          message: "No available slots for new calls", 
+          inProgressCount,
+          maxConcurrent,
+          processed: 0 
+        });
+      }
+
+      // Get queued calls
+      const queuedCalls = await storage.getQueuedCalls(id);
+      const callsToProcess = queuedCalls.slice(0, availableSlots);
+
+      let processedCount = 0;
+      let errorCount = 0;
+
+      // Process calls
+      for (const call of callsToProcess) {
+        try {
+          const phoneNumber = call.toNumber;
+          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+          
+          // Create call in Retell AI
+          const retellCall = await retellService.createPhoneCall({
+            from_number: fromNum,
+            to_number: phoneNumber,
+            override_agent_id: campaign.agentId,
+            metadata: {
+              campaignId: id,
+              listId: campaign.listId,
+              callId: call.id,
+            },
+          });
+
+          // Update call with Retell info
+          await storage.updateCall(call.id, {
+            callStatus: retellCall.call_status || 'registered',
+            startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
+            callAttempts: (call.callAttempts || 0) + 1,
+            lastAttemptAt: new Date(),
+          });
+
+          await storage.incrementCampaignInProgress(id);
+          processedCount++;
+        } catch (error) {
+          console.error("Error processing queued call:", error);
+          await storage.updateCall(call.id, {
+            callStatus: 'failed',
+            canRetry: true,
+            callAttempts: (call.callAttempts || 0) + 1,
+            lastAttemptAt: new Date(),
+          });
+          errorCount++;
+        }
+      }
+
+      res.json({
+        message: `Processed ${processedCount} queued calls`,
+        processed: processedCount,
+        errors: errorCount,
+        inProgressCount: inProgressCount + processedCount,
+        maxConcurrent,
+        remainingQueued: queuedCalls.length - callsToProcess.length,
+      });
+    } catch (error: any) {
+      console.error("Error processing queue:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Retry failed calls for a campaign
+  app.post("/api/campaigns/:id/retry-failed", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      const { maxRetries = 3, maxConcurrent = 20 } = req.body;
+
+      const campaign = await storage.getCampaign(id);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Check current in-progress calls
+      const inProgressCount = await storage.getInProgressCallsCount(userId);
+      const availableSlots = Math.max(0, maxConcurrent - inProgressCount);
+
+      if (availableSlots === 0) {
+        return res.json({ 
+          message: "No available slots for retries", 
+          inProgressCount,
+          maxConcurrent,
+          retried: 0 
+        });
+      }
+
+      // Get retriable calls (filtered by maxRetries)
+      const retriableCalls = await storage.getRetriableCalls(id);
+      const callsToRetry = retriableCalls
+        .filter(call => (call.callAttempts || 0) < maxRetries)
+        .slice(0, availableSlots);
+
+      let retriedCount = 0;
+      let errorCount = 0;
+
+      // Retry calls
+      for (const call of callsToRetry) {
+        try {
+          const phoneNumber = call.toNumber;
+          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+          
+          // Create call in Retell AI
+          const retellCall = await retellService.createPhoneCall({
+            from_number: fromNum,
+            to_number: phoneNumber,
+            override_agent_id: campaign.agentId,
+            metadata: {
+              campaignId: id,
+              listId: campaign.listId,
+              callId: call.id,
+              isRetry: true,
+            },
+          });
+
+          // Update call with Retell info
+          await storage.updateCall(call.id, {
+            callStatus: retellCall.call_status || 'registered',
+            startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
+            callAttempts: (call.callAttempts || 0) + 1,
+            lastAttemptAt: new Date(),
+            canRetry: false, // Reset until we know the outcome
+          });
+
+          await storage.incrementCampaignInProgress(id);
+          retriedCount++;
+        } catch (error) {
+          console.error("Error retrying call:", error);
+          await storage.updateCall(call.id, {
+            callAttempts: (call.callAttempts || 0) + 1,
+            lastAttemptAt: new Date(),
+          });
+          errorCount++;
+        }
+      }
+
+      res.json({
+        message: `Retried ${retriedCount} failed calls`,
+        retried: retriedCount,
+        errors: errorCount,
+        inProgressCount: inProgressCount + retriedCount,
+        maxConcurrent,
+        remainingRetriable: retriableCalls.length - callsToRetry.length,
+      });
+    } catch (error: any) {
+      console.error("Error retrying failed calls:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Delete a campaign
   app.delete("/api/campaigns/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
