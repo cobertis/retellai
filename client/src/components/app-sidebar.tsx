@@ -1,4 +1,4 @@
-import { Home, Users, Phone, BarChart3, Settings, PhoneCall, List, LogOut } from "lucide-react";
+import { Home, Users, Phone, BarChart3, Settings, PhoneCall, List, LogOut, Calendar } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -44,6 +44,11 @@ const menuItems = [
     title: "Calls",
     url: "/calls",
     icon: Phone,
+  },
+  {
+    title: "Appointments",
+    url: "/appointments",
+    icon: Calendar,
   },
   {
     title: "Analytics",

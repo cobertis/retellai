@@ -15,6 +15,7 @@ import PhoneListDetail from "@/pages/phone-list-detail";
 import Campaigns from "@/pages/campaigns";
 import Calls from "@/pages/calls";
 import CallDetail from "@/pages/call-detail";
+import Appointments from "@/pages/appointments";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 
@@ -41,6 +42,7 @@ function Router() {
           <Route path="/campaigns" component={Campaigns} />
           <Route path="/calls" component={Calls} />
           <Route path="/calls/:id" component={CallDetail} />
+          <Route path="/appointments" component={Appointments} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
         </>
