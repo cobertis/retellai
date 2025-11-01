@@ -143,6 +143,31 @@ Core entities:
 
 ## Recent Changes (November 1, 2025)
 
+### AI-Powered Lead Classification System (Nov 1, 2025)
+**Two-Column Phone Lists Page**
+- Redesigned `/phone-lists` page with two-column layout:
+  - Left column: Display existing phone lists
+  - Right column: AI Lead Processor interface
+- New endpoint `/api/process-leads` for intelligent CSV processing
+- OpenAI-powered name classification analyzing Hispanic/Latino vs Non-Hispanic leads
+- Automatic creation of two separate lists with appropriate tags and classifications
+- Real-time progress tracking during processing
+- Support for CSV files with columns: Teléfono/Nombre/Email (flexible column matching)
+
+**OpenAI Service Enhancement**
+- Added `classifyNames()` method to OpenAIService for intelligent name analysis
+- Processes names in batches of 50 for efficiency
+- Uses GPT-4o with onomastics expertise to analyze cultural and linguistic origins
+- NO simple pattern matching - each name analyzed individually for accuracy
+- Creates two lists: "Hispanic Leads - [date]" and "Non-Hispanic Leads - [date]"
+
+**CSV Processing Features**
+- Flexible column name matching (Teléfono/Telefono/Phone, Nombre/FirstName, etc.)
+- Automatic phone number normalization (removes non-digits)
+- Extracts: Phone, First Name, Last Name, Email
+- Error handling for invalid CSV files
+- Progress indicators and status messages
+
 ### Appointments Page - Complete Cal.com Sync (Nov 1, 2025)
 - **REDESIGNED** `/appointments` page to show ALL Cal.com bookings directly
 - New endpoint `/api/calcom/bookings` fetches all upcoming appointments from Cal.com
