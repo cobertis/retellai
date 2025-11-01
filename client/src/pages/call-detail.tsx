@@ -522,55 +522,10 @@ export default function CallDetail() {
         <TabsContent value="analysis" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Call Analysis</CardTitle>
-                  <CardDescription>
-                    AI-generated insights and metrics
-                  </CardDescription>
-                </div>
-                {callLog?.transcript && !call?.aiAnalysis && (
-                  <Button
-                    onClick={() => analyzeMutation.mutate()}
-                    disabled={analyzeMutation.isPending}
-                    size="sm"
-                    data-testid="button-analyze-call"
-                  >
-                    {analyzeMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Analyze with ChatGPT
-                      </>
-                    )}
-                  </Button>
-                )}
-                {call?.aiAnalysis && (
-                  <Button
-                    onClick={() => analyzeMutation.mutate()}
-                    disabled={analyzeMutation.isPending}
-                    size="sm"
-                    variant="outline"
-                    data-testid="button-reanalyze-call"
-                  >
-                    {analyzeMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Re-analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Re-analyze
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
+              <CardTitle>Call Analysis</CardTitle>
+              <CardDescription>
+                AI-generated insights and metrics
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {call?.aiAnalysis && <ChatGPTAnalysisDisplay analysis={call.aiAnalysis} />}
