@@ -143,12 +143,20 @@ export function registerRoutes(app: Express) {
       
       // For Cal.com fields, allow explicit null to clear values
       if (calcomApiKey !== undefined) {
-        const trimmed = calcomApiKey?.trim();
-        settings.calcomApiKey = trimmed === null || trimmed === '' ? null : trimmed;
+        if (calcomApiKey === null) {
+          settings.calcomApiKey = null;
+        } else {
+          const trimmed = calcomApiKey.trim();
+          settings.calcomApiKey = trimmed === '' ? null : trimmed;
+        }
       }
       if (calcomEventTypeId !== undefined) {
-        const trimmed = calcomEventTypeId?.trim();
-        settings.calcomEventTypeId = trimmed === null || trimmed === '' ? null : trimmed;
+        if (calcomEventTypeId === null) {
+          settings.calcomEventTypeId = null;
+        } else {
+          const trimmed = calcomEventTypeId.trim();
+          settings.calcomEventTypeId = trimmed === '' ? null : trimmed;
+        }
       }
       
       const user = await storage.updateUserSettings(userId, settings);
