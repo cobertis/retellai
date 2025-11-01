@@ -184,15 +184,17 @@ DO NOT use simple pattern matching - analyze each name intelligently based on:
 Names to analyze:
 ${batch.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}
 
-Respond with a JSON array where each element has:
+Respond with a JSON object containing an array called "classifications" where each element has:
 - "name": the original name
 - "hispanic": true if likely Hispanic/Latino, false otherwise
 
-Example response:
-[
-  {"name": "Maria Garcia", "hispanic": true},
-  {"name": "John Smith", "hispanic": false}
-]`;
+Example response format:
+{
+  "classifications": [
+    {"name": "Maria Garcia", "hispanic": true},
+    {"name": "John Smith", "hispanic": false}
+  ]
+}`;
 
       try {
         const completion = await openai.chat.completions.create({
@@ -200,13 +202,14 @@ Example response:
           messages: [
             {
               role: 'system',
-              content: 'You are an expert in onomastics (study of names) with deep knowledge of Hispanic and Latino naming patterns. Analyze each name individually and intelligently, considering cultural and linguistic origins. Always respond with a valid JSON array.'
+              content: 'You are an expert in onomastics (study of names) with deep knowledge of Hispanic and Latino naming patterns. Analyze each name individually and intelligently, considering cultural and linguistic origins. Always respond with valid JSON in the requested format.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
+          response_format: { type: 'json_object' },
           temperature: 0.2,
         });
 
@@ -215,17 +218,22 @@ Example response:
           throw new Error('No response from OpenAI');
         }
 
-        // Try to parse, with fallback for truncated JSON
+        // Parse JSON response
         let batchResults: { name: string; hispanic: boolean }[] = [];
         try {
           const parsed = JSON.parse(response);
-          // OpenAI might return array directly or wrapped in object
-          batchResults = Array.isArray(parsed) ? parsed : (parsed.results || parsed.classifications || []);
+          // Extract from the "classifications" field as specified in prompt
+          batchResults = parsed.classifications || [];
           
-          console.log(`✓ Batch ${batchNum}: Parsed ${batchResults.length} results`);
+          console.log(`✓ Batch ${batchNum}: Parsed ${batchResults.length}/${batch.length} results`);
+          
+          if (batchResults.length === 0) {
+            console.log(`⚠️  Batch ${batchNum}: No results found in response, using fallback`);
+            batchResults = batch.map(name => ({ name, hispanic: false }));
+          }
         } catch (parseError) {
           // If JSON is truncated, try to extract what we can
-          console.log(`⚠️  Batch ${batchNum}/${totalBatches}: JSON parse failed, using fallback`);
+          console.log(`⚠️  Batch ${batchNum}/${totalBatches}: JSON parse failed (${parseError}), using fallback`);
           batchResults = batch.map(name => ({ name, hispanic: false }));
         }
         
