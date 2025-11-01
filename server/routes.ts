@@ -499,6 +499,155 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // AI Lead Processing endpoint
+  app.post("/api/process-leads", isAuthenticated, upload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).send("No file uploaded");
+      }
+
+      console.log("Processing leads file:", file.originalname);
+
+      // Parse CSV
+      const contacts: Array<{
+        phone: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+        fullName: string;
+      }> = [];
+      
+      const stream = Readable.from(file.buffer);
+
+      await new Promise<void>((resolve, reject) => {
+        stream
+          .pipe(csvParser())
+          .on('data', (row: any) => {
+            // Normalize column names
+            const normalizedRow: any = {};
+            Object.keys(row).forEach(key => {
+              normalizedRow[key.toLowerCase().trim()] = row[key];
+            });
+            
+            // Extract fields - trying multiple column name variations
+            const phone = normalizedRow['teléfono'] || 
+                         normalizedRow['telefono'] || 
+                         normalizedRow['phone'] || 
+                         normalizedRow['phonenumber'] || '';
+            
+            const firstName = normalizedRow['nombre'] || 
+                             normalizedRow['firstname'] || 
+                             normalizedRow['first name'] || '';
+            
+            const lastName = normalizedRow['apellido'] || 
+                            normalizedRow['lastname'] || 
+                            normalizedRow['last name'] || '';
+            
+            const email = normalizedRow['email'] || 
+                         normalizedRow['correo'] || '';
+            
+            const fullName = `${firstName} ${lastName}`.trim();
+
+            if (phone && fullName) {
+              contacts.push({
+                phone: phone.toString().replace(/\D/g, ''),
+                firstName,
+                lastName,
+                email,
+                fullName
+              });
+            }
+          })
+          .on('end', resolve)
+          .on('error', reject);
+      });
+
+      console.log(`Parsed ${contacts.length} contacts from CSV`);
+
+      if (contacts.length === 0) {
+        return res.status(400).send("No valid contacts found in CSV");
+      }
+
+      // Use OpenAI to classify names
+      const names = contacts.map(c => c.fullName);
+      console.log(`Classifying ${names.length} names with AI...`);
+      
+      const classifications = await openaiService.classifyNames(names);
+      
+      // Map classifications back to contacts
+      const classifiedContacts = contacts.map(contact => {
+        const classification = classifications.find(c => c.name === contact.fullName);
+        return {
+          ...contact,
+          isHispanic: classification?.hispanic || false
+        };
+      });
+
+      // Separate into two groups
+      const hispanicContacts = classifiedContacts.filter(c => c.isHispanic);
+      const nonHispanicContacts = classifiedContacts.filter(c => !c.isHispanic);
+
+      console.log(`Hispanic: ${hispanicContacts.length}, Non-Hispanic: ${nonHispanicContacts.length}`);
+
+      // Create two lists
+      const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      
+      const hispanicList = await storage.createPhoneList(userId, {
+        name: `Hispanic Leads - ${today}`,
+        description: `Automatically classified Hispanic/Latino leads from ${file.originalname}`,
+        classification: 'Hispanic/Latino',
+        tags: ['AI-Processed', 'Hispanic'],
+        totalNumbers: hispanicContacts.length,
+      });
+
+      const nonHispanicList = await storage.createPhoneList(userId, {
+        name: `Non-Hispanic Leads - ${today}`,
+        description: `Automatically classified non-Hispanic leads from ${file.originalname}`,
+        classification: 'Non-Hispanic',
+        tags: ['AI-Processed', 'Non-Hispanic'],
+        totalNumbers: nonHispanicContacts.length,
+      });
+
+      // Add contacts to respective lists
+      for (const contact of hispanicContacts) {
+        await storage.createPhoneNumber({
+          listId: hispanicList.id,
+          phoneNumber: contact.phone,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+        });
+      }
+
+      for (const contact of nonHispanicContacts) {
+        await storage.createPhoneNumber({
+          listId: nonHispanicList.id,
+          phoneNumber: contact.phone,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+        });
+      }
+
+      res.json({
+        success: true,
+        hispanicCount: hispanicContacts.length,
+        nonHispanicCount: nonHispanicContacts.length,
+        hispanicListId: hispanicList.id,
+        nonHispanicListId: nonHispanicList.id,
+        hispanicListName: hispanicList.name,
+        nonHispanicListName: nonHispanicList.name,
+      });
+
+    } catch (error: any) {
+      console.error("Error processing leads:", error);
+      res.status(500).send(error.message || "Failed to process leads");
+    }
+  });
+
   // Campaign endpoints
   app.get("/api/campaigns", isAuthenticated, async (req: Request, res: Response) => {
     try {

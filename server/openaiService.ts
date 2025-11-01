@@ -157,6 +157,75 @@ Provide a clear, concise explanation in Spanish of what happened and why no appo
       return 'Error al analizar la llamada';
     }
   }
+
+  async classifyNames(names: string[]): Promise<{ hispanic: boolean; name: string }[]> {
+    if (names.length === 0) {
+      return [];
+    }
+
+    // Process in batches of 50 for efficiency
+    const batchSize = 50;
+    const results: { hispanic: boolean; name: string }[] = [];
+
+    for (let i = 0; i < names.length; i += batchSize) {
+      const batch = names.slice(i, i + batchSize);
+      
+      const prompt = `Analyze the following list of names and determine if each person is likely Hispanic/Latino or not. 
+      
+Consider cultural and linguistic indicators, name origins, and common Hispanic naming patterns. 
+DO NOT use simple pattern matching - analyze each name intelligently based on:
+- Spanish language origin
+- Common Hispanic given names and surnames
+- Latin American naming conventions
+- Cultural context
+
+Names to analyze:
+${batch.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}
+
+Respond with a JSON array where each element has:
+- "name": the original name
+- "hispanic": true if likely Hispanic/Latino, false otherwise
+
+Example response:
+[
+  {"name": "Maria Garcia", "hispanic": true},
+  {"name": "John Smith", "hispanic": false}
+]`;
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert in onomastics (study of names) with deep knowledge of Hispanic and Latino naming patterns. Analyze each name individually and intelligently, considering cultural and linguistic origins.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2,
+        });
+
+        const response = completion.choices[0]?.message?.content;
+        if (!response) {
+          throw new Error('No response from OpenAI');
+        }
+
+        const parsed = JSON.parse(response);
+        const batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
+        results.push(...batchResults);
+      } catch (error: any) {
+        console.error('Error classifying names batch:', error);
+        // On error, mark all names in batch as non-hispanic (safe default)
+        results.push(...batch.map(name => ({ name, hispanic: false })));
+      }
+    }
+
+    return results;
+  }
 }
 
 export const openaiService = new OpenAIService();
