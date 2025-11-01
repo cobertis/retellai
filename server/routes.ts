@@ -1319,7 +1319,7 @@ export function registerRoutes(app: Express) {
       const allCalls = await storage.getCallsByCampaign(id);
       const failedCalls = allCalls.filter(call => 
         call.callStatus === 'failed' || 
-        (call.disconnectionReason && ['dial_failed', 'dial_busy', 'error'].includes(call.disconnectionReason))
+        (call.disconnectionReason && ['dial_no_answer', 'dial_failed', 'dial_busy', 'error'].includes(call.disconnectionReason))
       );
 
       if (failedCalls.length === 0) {
