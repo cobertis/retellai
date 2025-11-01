@@ -266,26 +266,57 @@ export default function PhoneLists() {
                     ))}
                   </div>
                   <div className="flex gap-2 pt-2">
-                    <Link href={`/phone-lists/${list.id}`}>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="flex-1"
-                        data-testid={`button-view-details-${list.id}`}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View Details
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(list.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-list-${list.id}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    {list.tags?.includes('Pending-Classification') ? (
+                      <>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="flex-1"
+                          onClick={async () => {
+                            setUploadedListId(list.id);
+                            setUploadedListName(list.name);
+                            setTotalContacts(list.totalNumbers || 0);
+                            setCurrentStep('classify');
+                          }}
+                          data-testid={`button-classify-${list.id}`}
+                        >
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          Clasificar con IA
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteMutation.mutate(list.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-list-${list.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Link href={`/phone-lists/${list.id}`}>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="flex-1"
+                            data-testid={`button-view-details-${list.id}`}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            View Details
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteMutation.mutate(list.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-list-${list.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
