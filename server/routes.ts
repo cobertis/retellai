@@ -183,10 +183,23 @@ async function classifyListAsync(
     progress.status = 'completed';
     console.log(`✅ Classification complete! Created 2 new lists.`);
 
+    // Clean up progress after 5 minutes to prevent memory leaks
+    setTimeout(() => {
+      classificationProgress.delete(listId);
+      console.log(`🧹 Cleaned up classification progress for list ${listId}`);
+    }, 5 * 60 * 1000);
+
   } catch (error: any) {
     console.error('❌ Classification failed:', error);
     progress.status = 'error';
     progress.errorMessage = error.message;
+    
+    // Clean up progress after 5 minutes even on error
+    setTimeout(() => {
+      classificationProgress.delete(listId);
+      console.log(`🧹 Cleaned up classification progress for list ${listId}`);
+    }, 5 * 60 * 1000);
+    
     throw error;
   }
 }
@@ -790,6 +803,15 @@ export function registerRoutes(app: Express) {
     try {
       const userId = getUserId(req);
       const { id } = req.params;
+
+      // Prevent concurrent classifications of the same list
+      const existingProgress = classificationProgress.get(id);
+      if (existingProgress && existingProgress.status === 'processing') {
+        return res.status(409).json({ 
+          message: "Classification already in progress for this list",
+          progress: existingProgress 
+        });
+      }
 
       // Get the phone list
       const phoneList = await storage.getPhoneList(id);
