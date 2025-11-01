@@ -180,6 +180,7 @@ export default function Calls() {
                     const analysis = call.aiAnalysis as any;
                     const appointmentScheduled = analysis?.appointmentScheduled ?? null;
                     const customerName = analysis?.customerName ?? null;
+                    const calcomVerification = analysis?.calcomVerification;
                     
                     return (
                       <TableRow 
@@ -199,17 +200,33 @@ export default function Calls() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {appointmentScheduled === true ? (
-                            <Badge className="bg-green-600 hover:bg-green-700 text-white" data-testid={`badge-appointment-scheduled-${call.id}`}>
-                              Cita Agendada
-                            </Badge>
-                          ) : appointmentScheduled === false ? (
-                            <Badge className="bg-red-600 hover:bg-red-700 text-white" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
-                              No agendada
-                            </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {appointmentScheduled === true ? (
+                              <>
+                                <Badge className="bg-green-600 hover:bg-green-700 text-white w-fit" data-testid={`badge-appointment-scheduled-${call.id}`}>
+                                  Cita Agendada
+                                </Badge>
+                                {calcomVerification && (
+                                  <Badge 
+                                    className={`w-fit text-xs ${
+                                      calcomVerification.verified 
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                        : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                                    }`}
+                                    data-testid={`badge-calcom-${calcomVerification.verified ? 'verified' : 'unverified'}-${call.id}`}
+                                  >
+                                    {calcomVerification.verified ? '✓ Cal.com Verified' : '⚠ Not in Cal.com'}
+                                  </Badge>
+                                )}
+                              </>
+                            ) : appointmentScheduled === false ? (
+                              <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
+                                No agendada
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm">

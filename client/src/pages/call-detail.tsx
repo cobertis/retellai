@@ -151,6 +151,102 @@ function ChatGPTAnalysisDisplay({ analysis }: { analysis: any }) {
           <p className="text-sm text-muted-foreground leading-relaxed">{analysis.notes}</p>
         </div>
       )}
+
+      {/* Customer Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+        {analysis.customerName && (
+          <div className="bg-card p-3 rounded-md">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Customer Name</p>
+            <p className="text-sm font-semibold">{analysis.customerName}</p>
+          </div>
+        )}
+        
+        <div className="bg-card p-3 rounded-md">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Appointment Status</p>
+          {analysis.appointmentScheduled ? (
+            <div className="flex flex-col gap-2">
+              <Badge className="bg-green-600 hover:bg-green-700 text-white w-fit">
+                ✓ Appointment Scheduled
+              </Badge>
+              {analysis.appointmentDetails && (
+                <p className="text-xs text-muted-foreground mt-1">{analysis.appointmentDetails}</p>
+              )}
+            </div>
+          ) : (
+            <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit">
+              No Appointment
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Cal.com Verification */}
+      {analysis.calcomVerification && (
+        <div className="border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50 dark:bg-blue-950/30 mt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+            </svg>
+            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Cal.com Verification</h4>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Verification Status</p>
+              <Badge className={`${
+                analysis.calcomVerification.verified 
+                  ? 'bg-green-600 hover:bg-green-700' 
+                  : 'bg-yellow-600 hover:bg-yellow-700'
+              } text-white w-fit`}>
+                {analysis.calcomVerification.verified ? '✓ Verified in Cal.com' : '⚠ Not Found in Cal.com'}
+              </Badge>
+            </div>
+            
+            <div>
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Check Time</p>
+              <p className="text-sm text-blue-900 dark:text-blue-100">
+                {new Date(analysis.calcomVerification.checkedAt).toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          {analysis.calcomVerification.verified && analysis.calcomVerification.bookingStart && (
+            <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">Booking Details</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="font-medium">Start:</span>{' '}
+                  <span className="text-blue-900 dark:text-blue-100">
+                    {new Date(analysis.calcomVerification.bookingStart).toLocaleString()}
+                  </span>
+                </div>
+                {analysis.calcomVerification.bookingEnd && (
+                  <div>
+                    <span className="font-medium">End:</span>{' '}
+                    <span className="text-blue-900 dark:text-blue-100">
+                      {new Date(analysis.calcomVerification.bookingEnd).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {analysis.calcomVerification.bookingUid && (
+                  <div className="col-span-2">
+                    <span className="font-medium">Booking ID:</span>{' '}
+                    <span className="font-mono text-xs text-blue-900 dark:text-blue-100">
+                      {analysis.calcomVerification.bookingUid}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              {analysis.calcomVerification.message}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -126,12 +126,15 @@ Core entities:
 - Google Fonts CDN: Inter and JetBrains Mono font families
 - Favicon served from `/public` directory
 
-**Cal.com Integration** (Planned)
-- Cal.com API integration for appointment verification
+**Cal.com Integration** (Implemented)
+- Cal.com API v2 integration for automatic appointment verification
 - Per-user Cal.com credentials stored in `users` table (`calcomApiKey`, `calcomEventTypeId`)
 - Settings page allows users to configure Cal.com API credentials
-- Future: Automatic appointment verification against Cal.com bookings
+- Automatic appointment verification against Cal.com bookings in webhook flow
 - Supports adding, updating, and clearing Cal.com credentials (null values properly handled)
+- CalcomService class handles all Cal.com API interactions
+- Verifies appointments by phone number matching
+- Displays verification status in calls table and call detail page
 
 **Development Tools**
 - Replit-specific Vite plugins (cartographer, dev-banner, runtime-error-modal)
@@ -140,7 +143,8 @@ Core entities:
 
 ## Recent Changes (November 1, 2025)
 
-### Cal.com Integration Setup
+### Cal.com Integration - Complete Implementation
+**Phase 1: Settings Infrastructure**
 - Added `calcomApiKey` and `calcomEventTypeId` fields to `users` table for per-user Cal.com configuration
 - Implemented Settings page (`/settings`) with dedicated Cal.com Integration section
 - Backend API route (`PATCH /api/user/settings`) now supports updating Cal.com credentials
@@ -152,3 +156,50 @@ Core entities:
   - API Configuration (Retell webhook URL)
   - Account management (logout)
 - Multi-tenant ready: Each user has their own Cal.com credentials
+
+**Phase 2: Cal.com API Integration**
+- Created `CalcomService` class for interacting with Cal.com API v2
+- Implemented robust appointment verification with temporal correlation
+- Verification logic prevents false positives through multiple checks:
+  1. **Future-Only Window**: Only searches bookings from call time to +7 days (strict future bookings)
+  2. **Single-Booking Requirement**: Only verifies when exactly 1 matching booking exists (ambiguous cases fail safe)
+  3. **Creation Time Validation**: Booking must be created within 1 hour before call to future (prevents pre-existing bookings)
+  4. **Phone Number Matching**: Normalized comparison handling various formats
+- Service supports:
+  - Fetching bookings filtered by event type with date range
+  - Finding bookings by phone number with strict temporal constraints
+  - Verifying appointments with detailed status and explanatory messages
+- Automatic integration in `call_analyzed` webhook:
+  - When ChatGPT detects an appointment, automatically verifies with Cal.com
+  - Only runs if user has Cal.com credentials configured
+  - Uses call timestamp (startTimestamp or createdAt) as reference point
+  - Stores verification results in `aiAnalysis.calcomVerification`
+
+**Phase 3: UI Enhancements**
+- Updated Calls table to display Cal.com verification status:
+  - Shows "Cita Agendada" badge for scheduled appointments
+  - Additional badge: "✓ Cal.com Verified" (blue) or "⚠ Not in Cal.com" (yellow)
+- Enhanced Call Detail page with comprehensive Cal.com verification section:
+  - Customer name display
+  - Appointment status with details
+  - Cal.com verification panel showing:
+    - Verification status (verified/not found)
+    - Verification timestamp
+    - Full booking details (start time, end time, booking ID)
+    - Detailed message about verification result
+
+**Technical Details**
+- Cal.com API v2 endpoint: `https://api.cal.com/v2/bookings`
+- Authentication: Bearer token with API key
+- Booking fields used: `id`, `uid`, `title`, `start`, `end`, `createdAt`, `updatedAt`, `status`, `attendees`
+- Phone number matching: Normalized comparison handling various formats
+- Temporal validation: 
+  - Search window: [callTime, callTime + 7 days]
+  - Creation validation: booking.createdAt >= callTime - 1 hour
+  - Tolerance: 1 hour for clock skew and timezone variations
+- Error handling: Graceful fallback if Cal.com API is unavailable
+- Ambiguity handling: Returns `verified: false` with explanatory message when:
+  - Multiple bookings found (cannot determine which was just scheduled)
+  - Booking created before call time (pre-existing appointment)
+  - No future bookings found within window
+- Architecture: Service-based design following existing patterns (RetellService, OpenAIService)

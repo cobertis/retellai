@@ -15,6 +15,15 @@ export interface CallAnalysisResult {
   appointmentScheduled: boolean;
   appointmentDetails?: string;
   customerName?: string;
+  calcomVerification?: {
+    verified: boolean;
+    bookingId?: number;
+    bookingUid?: string;
+    bookingStart?: string;
+    bookingEnd?: string;
+    message: string;
+    checkedAt: string;
+  };
 }
 
 export class OpenAIService {

@@ -1131,12 +1131,51 @@ export function registerRoutes(app: Express) {
                   event.call.duration_ms || call?.durationMs || undefined
                 );
                 
-                // Store ChatGPT analysis
+                // Verify appointment with Cal.com if user has credentials and appointment was scheduled
+                if (analysis.appointmentScheduled && call) {
+                  try {
+                    const user = await storage.getUser(call.userId);
+                    
+                    if (user?.calcomApiKey && user?.calcomEventTypeId) {
+                      const { createCalcomService } = await import('./calcomService');
+                      const calcomService = createCalcomService(user.calcomApiKey, user.calcomEventTypeId);
+                      
+                      // Use call timestamp for verification window
+                      const callTimestamp = call.startTimestamp || call.createdAt || new Date();
+                      
+                      const verification = await calcomService.verifyAppointment(
+                        call.toNumber,
+                        analysis.appointmentDetails,
+                        callTimestamp
+                      );
+                      
+                      analysis.calcomVerification = {
+                        verified: verification.verified,
+                        bookingId: verification.booking?.id,
+                        bookingUid: verification.booking?.uid,
+                        bookingStart: verification.booking?.start,
+                        bookingEnd: verification.booking?.end,
+                        message: verification.message,
+                        checkedAt: new Date().toISOString(),
+                      };
+                      
+                      console.log(`📅 Cal.com verification for ${event.call.call_id}: ${verification.verified ? 'VERIFIED' : 'NOT FOUND'}`);
+                    }
+                  } catch (calcomError) {
+                    console.error(`Error verifying with Cal.com for call ${event.call.call_id}:`, calcomError);
+                    // Don't fail if Cal.com check fails
+                  }
+                }
+                
+                // Store ChatGPT analysis (with Cal.com verification if available)
                 await storage.updateCall(event.call.call_id, {
                   aiAnalysis: analysis as any,
                 });
                 
-                console.log(`✅ Auto-analyzed call ${event.call.call_id} - Appointment: ${analysis.appointmentScheduled ? 'YES' : 'NO'}`);
+                const calcomStatus = analysis.calcomVerification 
+                  ? ` | Cal.com: ${analysis.calcomVerification.verified ? '✅ VERIFIED' : '❌ NOT FOUND'}` 
+                  : '';
+                console.log(`✅ Auto-analyzed call ${event.call.call_id} - Appointment: ${analysis.appointmentScheduled ? 'YES' : 'NO'}${calcomStatus}`);
               } catch (aiError) {
                 console.error(`Error auto-analyzing call ${event.call.call_id}:`, aiError);
                 // Don't fail the webhook if AI analysis fails
