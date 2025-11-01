@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +41,7 @@ const formatDuration = (ms: number | null) => {
 };
 
 export default function Calls() {
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -175,7 +176,12 @@ export default function Calls() {
                 </TableHeader>
                 <TableBody>
                   {filteredCalls?.map((call) => (
-                    <TableRow key={call.id} className="hover-elevate" data-testid={`row-call-${call.id}`}>
+                    <TableRow 
+                      key={call.id} 
+                      className="hover-elevate cursor-pointer" 
+                      onClick={() => setLocation(`/calls/${call.id}`)}
+                      data-testid={`row-call-${call.id}`}
+                    >
                       <TableCell className="font-mono text-xs">{call.id}</TableCell>
                       <TableCell className="font-medium">{call.toNumber}</TableCell>
                       <TableCell className="text-muted-foreground">{call.fromNumber}</TableCell>
