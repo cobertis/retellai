@@ -1400,6 +1400,16 @@ export function registerRoutes(app: Express) {
 
       console.log(`🔄 Retrying ${retriableCalls.length} failed calls for campaign ${id}`);
 
+      // Mark old failed calls as retried (set canRetry = false so they don't get counted again)
+      for (const call of retriableCalls) {
+        await storage.updateCall(call.id, { canRetry: false });
+      }
+
+      // Decrement failed count since we're retrying these calls
+      await storage.updateCampaignStats(id, {
+        failedCalls: Math.max(0, (campaign.failedCalls || 0) - retriableCalls.length),
+      });
+
       // Get phone numbers for retriable calls
       const phoneNumberMap = new Map();
       for (const call of retriableCalls) {
