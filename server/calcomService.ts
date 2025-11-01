@@ -125,105 +125,72 @@ export class CalcomService {
     message: string;
   }> {
     try {
-      // Use call timestamp or current time as reference point
-      const referenceTime = callTimestamp || new Date();
+      // CHANGED LOGIC: Search for ALL future appointments from NOW
+      // If ChatGPT detected an appointment was scheduled, we want to find it in Cal.com
+      // regardless of when the call was made
+      const now = new Date();
       
-      // Search window: STRICTLY from call time forward to 7 days after
-      // Narrower window reduces false positives from unrelated future bookings
-      // Most appointment scheduling calls book within 1 week
-      const windowStart = new Date(referenceTime);
-      
-      const windowEnd = new Date(referenceTime);
-      windowEnd.setDate(windowEnd.getDate() + 7); // Reduced from 30 to 7 days
+      // Search window: from NOW to 30 days in the future
+      const windowEnd = new Date(now);
+      windowEnd.setDate(windowEnd.getDate() + 30);
       
       const bookings = await this.getBookings({ 
         status: 'accepted',
-        afterStart: windowStart.toISOString(),
+        afterStart: now.toISOString(),
         beforeEnd: windowEnd.toISOString(),
       });
       
       const normalizedPhone = phoneNumber.replace(/\D/g, '');
       
-      // Filter bookings by phone number AND must be AFTER call time (strict future-only)
+      // Filter bookings by phone number only
       const matchingBookings = bookings.filter((booking) => {
-        // Phone number must match
-        const phoneMatches = booking.attendees?.some((attendee) => {
+        return booking.attendees?.some((attendee) => {
           if (!attendee.phoneNumber) return false;
           const normalizedAttendeePhone = attendee.phoneNumber.replace(/\D/g, '');
           return normalizedAttendeePhone.includes(normalizedPhone) || 
                  normalizedPhone.includes(normalizedAttendeePhone);
         });
-        
-        if (!phoneMatches) return false;
-        
-        // Booking must be STRICTLY after call time (future-only, no backward tolerance)
-        const bookingStart = new Date(booking.start);
-        return bookingStart > referenceTime; // Strict: booking MUST be after call
       });
 
       if (matchingBookings.length === 0) {
         return {
           verified: false,
-          message: 'No future appointment found for this phone number within the next 7 days',
+          message: 'No future appointments found in Cal.com for this phone number',
         };
       }
       
-      // If multiple bookings exist within the window, we cannot confidently verify
-      // which one was just scheduled - mark as ambiguous
-      if (matchingBookings.length > 1) {
-        console.warn(`Multiple future bookings found for ${phoneNumber} within 7 days - cannot verify which was just scheduled`);
-        
-        // Sort to show the earliest one in the message
-        const sortedBookings = matchingBookings.sort((a, b) => {
-          return new Date(a.start).getTime() - new Date(b.start).getTime();
-        });
-        
-        return {
-          verified: false,
-          booking: sortedBookings[0],
-          message: `Found ${matchingBookings.length} appointments in the next 7 days - cannot confirm which was just scheduled`,
-        };
-      }
-
-      // Exactly one booking found - verify it was created around the time of the call
-      const booking = matchingBookings[0];
+      // Sort by start time to find the earliest appointment
+      const sortedBookings = matchingBookings.sort((a, b) => {
+        return new Date(a.start).getTime() - new Date(b.start).getTime();
+      });
       
-      // Check if booking was created AFTER the call (or very close - within 1 hour before for clock skew)
-      const bookingCreated = new Date(booking.createdAt);
-      const oneHourBeforeCall = new Date(referenceTime);
-      oneHourBeforeCall.setHours(oneHourBeforeCall.getHours() - 1);
+      const booking = sortedBookings[0];
       
-      if (bookingCreated < oneHourBeforeCall) {
-        // This booking was created before the call - it's a pre-existing appointment
-        console.warn(`Booking ${booking.id} was created at ${booking.createdAt}, which is before call time ${referenceTime.toISOString()} - this is a pre-existing appointment`);
-        return {
-          verified: false,
-          booking,
-          message: `Found an appointment but it was scheduled before this call (created ${new Date(booking.createdAt).toLocaleString()})`,
-        };
-      }
-      
-      // Calculate how far the booking is from the call
-      const timeDiff = new Date(booking.start).getTime() - referenceTime.getTime();
+      // Calculate time until appointment
+      const timeDiff = new Date(booking.start).getTime() - now.getTime();
       const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+      const hoursDiff = Math.round(timeDiff / (1000 * 60 * 60));
       
       let timeDescription = '';
-      if (daysDiff === 0) {
+      if (hoursDiff < 1) {
+        timeDescription = 'very soon';
+      } else if (hoursDiff < 24) {
+        timeDescription = `in ${hoursDiff} hours`;
+      } else if (daysDiff === 0) {
         timeDescription = 'today';
       } else if (daysDiff === 1) {
         timeDescription = 'tomorrow';
-      } else if (daysDiff === -1) {
-        timeDescription = 'yesterday';
-      } else if (daysDiff > 0) {
-        timeDescription = `in ${daysDiff} days`;
       } else {
-        timeDescription = `${Math.abs(daysDiff)} days ago`;
+        timeDescription = `in ${daysDiff} days`;
       }
+
+      const totalFound = matchingBookings.length;
+      const multipleMessage = totalFound > 1 ? ` (${totalFound} total appointments found)` : '';
 
       return {
         verified: true,
         booking,
-        message: `Appointment verified: ${new Date(booking.start).toLocaleDateString()} at ${new Date(booking.start).toLocaleTimeString()} (${timeDescription})`,
+        message: `Appointment verified: ${new Date(booking.start).toLocaleDateString()} at ${new Date(booking.start).toLocaleTimeString()} (${timeDescription})${multipleMessage}`,
       };
     } catch (error: any) {
       console.error('Error verifying appointment:', error);

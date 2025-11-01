@@ -159,20 +159,20 @@ Core entities:
 
 **Phase 2: Cal.com API Integration**
 - Created `CalcomService` class for interacting with Cal.com API v2
-- Implemented robust appointment verification with temporal correlation
-- Verification logic prevents false positives through multiple checks:
-  1. **Future-Only Window**: Only searches bookings from call time to +7 days (strict future bookings)
-  2. **Single-Booking Requirement**: Only verifies when exactly 1 matching booking exists (ambiguous cases fail safe)
-  3. **Creation Time Validation**: Booking must be created within 1 hour before call to future (prevents pre-existing bookings)
-  4. **Phone Number Matching**: Normalized comparison handling various formats
+- **UPDATED LOGIC (Nov 1, 2025)**: Simplified verification to show ALL future appointments
+  - Previous logic was too strict, missing legitimate appointments
+  - Now searches for ALL future appointments from current time (not call time)
+  - Shows the earliest upcoming appointment for the phone number
+  - Indicates total count if multiple appointments exist
+  - Removed temporal creation checks that caused false negatives
 - Service supports:
   - Fetching bookings filtered by event type with date range
-  - Finding bookings by phone number with strict temporal constraints
+  - Finding bookings by phone number
   - Verifying appointments with detailed status and explanatory messages
 - Automatic integration in `call_analyzed` webhook:
   - When ChatGPT detects an appointment, automatically verifies with Cal.com
   - Only runs if user has Cal.com credentials configured
-  - Uses call timestamp (startTimestamp or createdAt) as reference point
+  - Searches from NOW to +30 days in the future
   - Stores verification results in `aiAnalysis.calcomVerification`
 
 **Phase 3: UI Enhancements**
