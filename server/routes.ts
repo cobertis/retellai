@@ -1002,8 +1002,9 @@ export function registerRoutes(app: Express) {
           startedAt: new Date(),
         });
 
-        // Start making calls with concurrency limit of 20
-        await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
+        // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
+        console.log(`🚀 Starting campaign ${campaign.id} with ${phoneNumbers.length} calls in background...`);
+        void processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
           try {
             const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
             const retellCall = await retellService.createPhoneCall({
@@ -1053,6 +1054,14 @@ export function registerRoutes(app: Express) {
             // Atomic increment - no race conditions
             await storage.incrementCampaignFailed(campaign.id);
           }
+        }).catch(async (error) => {
+          console.error(`❌ Fatal error in campaign ${campaign.id} background processing:`, error);
+          // Mark campaign as failed
+          try {
+            await storage.updateCampaignStatus(campaign.id, 'failed');
+          } catch (updateError) {
+            console.error('Failed to update campaign status:', updateError);
+          }
         });
       }
       
@@ -1087,8 +1096,9 @@ export function registerRoutes(app: Express) {
         startedAt: new Date(),
       });
 
-      // Start making calls with concurrency limit of 20
-      await processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
+      // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
+      console.log(`🚀 Starting campaign ${id} with ${phoneNumbers.length} calls in background...`);
+      void processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
         try {
           // Create call in Retell AI
           const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
@@ -1135,6 +1145,14 @@ export function registerRoutes(app: Express) {
           });
         } catch (error) {
           console.error("Error creating call:", error);
+        }
+      }).catch(async (error) => {
+        console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
+        // Mark campaign as failed
+        try {
+          await storage.updateCampaignStatus(id, 'failed');
+        } catch (updateError) {
+          console.error('Failed to update campaign status:', updateError);
         }
       });
 
