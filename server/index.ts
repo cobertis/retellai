@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes, resumeRunningCampaigns } from "./routes";
 import { setupAuth } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -78,5 +78,10 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || '5000', 10);
   app.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
+    
+    // Resume any campaigns that were running when server stopped
+    resumeRunningCampaigns().catch(error => {
+      console.error('Failed to resume campaigns on startup:', error);
+    });
   });
 })();

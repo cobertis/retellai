@@ -381,6 +381,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(campaigns.createdAt));
   }
 
+  async getRunningCampaigns(): Promise<Campaign[]> {
+    return await db
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.isRunning, true))
+      .orderBy(desc(campaigns.createdAt));
+  }
+
   async updateCampaignStatus(id: string, status: string): Promise<void> {
     const updateData: any = { status, updatedAt: new Date() };
     

@@ -381,8 +381,36 @@ async function waitUntilCallsComplete(callIds: string[], campaignId?: string): P
   }
 }
 
+// Resume all running campaigns on server startup (fire-and-forget, non-blocking)
+export async function resumeRunningCampaigns(): Promise<void> {
+  try {
+    console.log('🔍 Checking for running campaigns to resume...');
+    
+    // Find all campaigns that were running when server stopped
+    const runningCampaigns = await storage.getRunningCampaigns();
+    
+    if (runningCampaigns.length === 0) {
+      console.log('✅ No campaigns to resume');
+      return;
+    }
+
+    console.log(`🔄 Found ${runningCampaigns.length} campaign(s) to resume`);
+    
+    // Resume each campaign in background (fire-and-forget to avoid blocking server startup)
+    for (const campaign of runningCampaigns) {
+      console.log(`🚀 Resuming campaign ${campaign.id} (${campaign.name})`);
+      // Don't await - let it run in background
+      resumeCampaign(campaign.id).catch(error => {
+        console.error(`Failed to resume campaign ${campaign.id}:`, error);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error resuming campaigns:', error);
+  }
+}
+
 // Resume a campaign from where it left off (after server restart)
-async function resumeCampaign(campaignId: string): Promise<void> {
+export async function resumeCampaign(campaignId: string): Promise<void> {
   try {
     console.log(`🔄 Resuming campaign ${campaignId}...`);
     

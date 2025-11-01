@@ -31,6 +31,9 @@ Preferred communication style: Simple, everyday language.
 - **Call Queue Management**: `calls` table includes `callAttempts`, `lastAttemptAt`, and `canRetry` fields. `campaigns` table has `concurrencyLimit`.
 - **Smart Retry Logic**: Webhook determines retry eligibility based on `disconnection_reason`. Retriable reasons: `dial_failed`, `dial_no_answer`, `dial_busy`. Configurable retry limits (default: 3).
 - **Concurrency Control**: Dual-tier throttling with a global limit (20 concurrent calls per user) and per-campaign `concurrencyLimit`.
+- **Campaign Persistence & Auto-Resume**: Campaign execution state is now persisted in the database using `currentBatch`, `totalBatches`, and `isRunning` fields. On server startup, the system automatically resumes any campaigns that were running when the server stopped, continuing from the last completed batch. This ensures campaigns survive server restarts without losing progress.
+- **Contact Tracking**: `phone_numbers` table includes `contacted` and `lastContactedAt` fields to track which numbers have been successfully reached. Campaign initialization automatically filters out already-contacted numbers to prevent duplicate calls.
+- **Call Timeout Protection**: Individual calls have a 10-minute timeout to prevent stuck calls from blocking batch progression. Calls exceeding this timeout are automatically marked as failed, allowing the batch to continue.
 - **AI Lead Classification**: Two-column Phone Lists page with an "AI Lead Processor" using OpenAI's GPT-4o for name classification (Hispanic/Latino vs Non-Hispanic). Creates separate lists. Flexible CSV column matching and phone number normalization.
 - **Appointments Page**: Displays all upcoming Cal.com bookings directly from the Cal.com API. Includes stat cards, search functionality, and detailed booking information.
 - **Cal.com Re-verification**: Endpoints for re-verifying individual calls and bulk verifying all unverified appointments with Cal.com.
