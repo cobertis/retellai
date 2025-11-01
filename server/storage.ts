@@ -54,9 +54,10 @@ export interface IStorage {
   createPhoneNumbers(numbers: InsertPhoneNumber[]): Promise<void>;
   createPhoneNumber(number: InsertPhoneNumber): Promise<PhoneNumber>;
   getPhoneNumber(id: string): Promise<PhoneNumber | undefined>;
-  getPhoneNumbersByList(listId: string): Promise<PhoneNumber[]>;
+  getPhoneNumbersByList(listId: string, excludeContacted?: boolean): Promise<PhoneNumber[]>;
   updatePhoneNumber(id: string, data: Partial<Omit<InsertPhoneNumber, 'listId'>>): Promise<PhoneNumber | undefined>;
   deletePhoneNumber(id: string): Promise<void>;
+  markPhoneNumberContacted(phoneNumber: string): Promise<void>;
 
   // Campaign operations
   createCampaign(userId: string, campaign: InsertCampaign): Promise<Campaign>;
@@ -321,12 +322,28 @@ export class DatabaseStorage implements IStorage {
     return number;
   }
 
-  async getPhoneNumbersByList(listId: string): Promise<PhoneNumber[]> {
+  async getPhoneNumbersByList(listId: string, excludeContacted: boolean = false): Promise<PhoneNumber[]> {
+    const conditions = [eq(phoneNumbers.listId, listId)];
+    
+    if (excludeContacted) {
+      conditions.push(eq(phoneNumbers.contacted, false));
+    }
+    
     return await db
       .select()
       .from(phoneNumbers)
-      .where(eq(phoneNumbers.listId, listId))
+      .where(and(...conditions))
       .orderBy(desc(phoneNumbers.createdAt));
+  }
+  
+  async markPhoneNumberContacted(phoneNumber: string): Promise<void> {
+    await db
+      .update(phoneNumbers)
+      .set({
+        contacted: true,
+        lastContactedAt: new Date(),
+      })
+      .where(eq(phoneNumbers.phoneNumber, phoneNumber));
   }
 
   async updatePhoneNumber(id: string, data: Partial<Omit<InsertPhoneNumber, 'listId'>>): Promise<PhoneNumber | undefined> {

@@ -141,6 +141,8 @@ export const phoneNumbers = pgTable("phone_numbers", {
   customFields: jsonb("custom_fields"),
   classification: varchar("classification"),
   tags: text("tags").array(),
+  contacted: boolean("contacted").default(false),
+  lastContactedAt: timestamp("last_contacted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

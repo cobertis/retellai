@@ -1062,7 +1062,7 @@ export function registerRoutes(app: Express) {
 
       // If startImmediately is true, start the campaign right away
       if (startImmediately) {
-        const phoneNumbers = await storage.getPhoneNumbersByList(listId);
+        const phoneNumbers = await storage.getPhoneNumbersByList(listId, true); // Exclude contacted numbers
         
         if (phoneNumbers.length === 0) {
           return res.status(400).json({ message: "No phone numbers in list" });
@@ -1196,8 +1196,8 @@ export function registerRoutes(app: Express) {
         return res.status(404).json({ message: "Campaign not found" });
       }
 
-      // Get phone numbers from the list
-      const phoneNumbers = await storage.getPhoneNumbersByList(campaign.listId);
+      // Get phone numbers from the list (exclude already contacted)
+      const phoneNumbers = await storage.getPhoneNumbersByList(campaign.listId, true);
       
       if (phoneNumbers.length === 0) {
         return res.status(400).json({ message: "No phone numbers in list" });
@@ -2301,6 +2301,11 @@ export function registerRoutes(app: Express) {
             const call = await storage.getCall(event.call.call_id);
             if (call?.campaignId) {
               await storage.handleCallEnded(call.campaignId, callSucceeded);
+              
+              // Mark phone number as contacted if call was successful
+              if (callSucceeded) {
+                await storage.markPhoneNumberContacted(call.toNumber);
+              }
             }
           }
           break;
