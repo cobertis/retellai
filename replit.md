@@ -143,24 +143,25 @@ Core entities:
 
 ## Recent Changes (November 1, 2025)
 
-### Appointments Page & Badge Counter (Nov 1, 2025)
-- Created dedicated `/appointments` page to view all scheduled appointments
-- Added smart filters: All, Verified in Cal.com, Not Verified
-- Search functionality by customer name, phone, or call ID
-- Displays 3 stat cards: Total Appointments, Verified, Not Verified
-- Added appointment count badge to sidebar menu (auto-updates)
-- Lightweight `/api/calls/stats/appointments` endpoint for efficient counting
-- Fixed Cal.com verification badges to use Lucide icons (removed emojis)
-- Moved CallAnalysisResult type to shared/schema.ts for type safety
+### Appointments Page - Complete Cal.com Sync (Nov 1, 2025)
+- **REDESIGNED** `/appointments` page to show ALL Cal.com bookings directly
+- New endpoint `/api/calcom/bookings` fetches all upcoming appointments from Cal.com
+- Removed call-based appointment detection - now pure Cal.com synchronization
+- Displays 3 stat cards: Total Appointments, This Week, This Month
+- Real-time data from Cal.com API (refetches every 10 seconds)
+- Search functionality by customer name, email, phone, or appointment title
+- Shows booking details: customer info, contact, appointment type, status, date/time, duration
+- Fixed Cal.com API: Updated from deprecated `status: 'accepted'` to `status: 'upcoming'`
+- Graceful error handling when Cal.com credentials not configured
 
 ### Cal.com Re-verification Feature (Nov 1, 2025)
 - Added `/api/calls/:id/reverify-calcom` endpoint to re-verify individual calls
 - Added `/api/calls/auto-verify-appointments` endpoint to bulk verify all unverified appointments
 - "Re-verify with Cal.com" button in call detail page for appointments
-- **Automatic verification**: Appointments page now auto-verifies all appointments with Cal.com on mount
 - Allows updating verification for calls analyzed before Cal.com integration
 - Shows loading state while verifying
 - Automatically updates all caches after verification
+- **NOTE**: Appointments page NO LONGER auto-verifies on mount - now shows direct Cal.com data instead
 
 ## Recent Changes (November 1, 2025)
 

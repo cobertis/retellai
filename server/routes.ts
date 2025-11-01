@@ -1120,6 +1120,32 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Get all Cal.com bookings
+  app.get("/api/calcom/bookings", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const user = await storage.getUser(userId);
+      
+      if (!user?.calcomApiKey || !user?.calcomEventTypeId) {
+        return res.status(400).json({ 
+          message: 'Cal.com credentials not configured. Please add your Cal.com API key and Event Type ID in Settings.' 
+        });
+      }
+
+      const calcomService = createCalcomService(user.calcomApiKey, user.calcomEventTypeId);
+      
+      // Get upcoming bookings
+      const bookings = await calcomService.getBookings({ 
+        status: 'upcoming',
+      });
+
+      res.json(bookings);
+    } catch (error: any) {
+      console.error('Error fetching Cal.com bookings:', error);
+      res.status(500).json({ message: error.message || 'Failed to fetch Cal.com bookings' });
+    }
+  });
+
   // Auto-verify all appointments with Cal.com
   app.post("/api/calls/auto-verify-appointments", isAuthenticated, async (req: Request, res: Response) => {
     try {

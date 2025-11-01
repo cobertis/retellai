@@ -1,17 +1,35 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Search, ExternalLink, Clock, CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
+import { Calendar, Search, ExternalLink, Clock, Phone, User } from "lucide-react";
 import { format } from "date-fns";
-import type { Call, CallAnalysisResult } from "@shared/schema";
+
+interface CalcomBooking {
+  id: number;
+  uid: string;
+  title: string;
+  description?: string;
+  status: 'accepted' | 'pending' | 'cancelled' | 'rejected';
+  start: string;
+  end: string;
+  duration: number;
+  eventTypeId: number;
+  createdAt: string;
+  updatedAt: string;
+  attendees?: Array<{
+    name?: string;
+    email: string;
+    timeZone?: string;
+    phoneNumber?: string;
+  }>;
+  meetingUrl?: string;
+  location?: string;
+}
 
 const formatDuration = (ms: number | null) => {
   if (!ms) return '-';
@@ -24,80 +42,59 @@ const formatDuration = (ms: number | null) => {
 export default function Appointments() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [verificationFilter, setVerificationFilter] = useState("all");
 
-  const { data: calls, isLoading } = useQuery<Call[]>({
-    queryKey: ["/api/calls"],
-    refetchInterval: 5000,
+  const { data: bookings, isLoading, error } = useQuery<CalcomBooking[]>({
+    queryKey: ["/api/calcom/bookings"],
+    refetchInterval: 10000,
   });
 
-  // Auto-verify appointments mutation
-  const autoVerifyMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest('POST', '/api/calls/auto-verify-appointments');
-    },
-    onSuccess: (response: any) => {
-      if (response.verified > 0) {
-        queryClient.invalidateQueries({ queryKey: ['/api/calls'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/calls/stats/appointments'] });
-      }
-    },
-    onError: (error: any) => {
-      // Silently ignore missing credentials error
-      if (!error.message?.includes('Cal.com credentials not configured')) {
-        console.error('Auto-verification error:', error);
-      }
-    },
-  });
-
-  // Auto-verify on mount (only once, prevent double-run in React strict mode)
-  useEffect(() => {
-    let didRun = false;
-    if (!didRun) {
-      autoVerifyMutation.mutate();
-      didRun = true;
-    }
-  }, []);
-
-  // Filter only calls with appointments scheduled
-  const appointmentCalls = calls?.filter((call) => {
-    const analysis = call.aiAnalysis as CallAnalysisResult | null;
-    return analysis?.appointmentScheduled === true;
-  });
-
-  const filteredAppointments = appointmentCalls?.filter((call) => {
-    const analysis = call.aiAnalysis as CallAnalysisResult | null;
-    const calcomVerification = analysis?.calcomVerification;
-    const customerName = analysis?.customerName ?? '';
+  // Filter bookings based on search
+  const filteredBookings = bookings?.filter((booking) => {
+    const attendeeName = booking.attendees?.[0]?.name || '';
+    const attendeeEmail = booking.attendees?.[0]?.email || '';
+    const attendeePhone = booking.attendees?.[0]?.phoneNumber || '';
 
     const matchesSearch = 
-      call.toNumber.includes(search) ||
-      customerName.toLowerCase().includes(search.toLowerCase()) ||
-      call.id.toLowerCase().includes(search.toLowerCase());
+      attendeePhone.includes(search) ||
+      attendeeName.toLowerCase().includes(search.toLowerCase()) ||
+      attendeeEmail.toLowerCase().includes(search.toLowerCase()) ||
+      booking.title.toLowerCase().includes(search.toLowerCase()) ||
+      booking.uid.toLowerCase().includes(search.toLowerCase());
 
-    let matchesVerification = true;
-    if (verificationFilter === "verified") {
-      matchesVerification = calcomVerification?.verified === true;
-    } else if (verificationFilter === "unverified") {
-      matchesVerification = !calcomVerification || calcomVerification?.verified === false;
-    }
-
-    return matchesSearch && matchesVerification;
+    return matchesSearch;
   });
 
-  const verifiedCount = appointmentCalls?.filter((call) => {
-    const analysis = call.aiAnalysis as CallAnalysisResult | null;
-    return analysis?.calcomVerification?.verified === true;
-  }).length ?? 0;
+  // Sort by start time (earliest first)
+  const sortedBookings = filteredBookings?.sort((a, b) => {
+    return new Date(a.start).getTime() - new Date(b.start).getTime();
+  });
 
-  const unverifiedCount = (appointmentCalls?.length ?? 0) - verifiedCount;
+  if (error) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">Appointments</h1>
+          <p className="text-sm text-muted-foreground">
+            View all scheduled appointments from Cal.com
+          </p>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-sm text-muted-foreground">
+              Unable to load Cal.com appointments. Please configure your Cal.com credentials in Settings.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold mb-1">Appointments</h1>
         <p className="text-sm text-muted-foreground">
-          View and manage scheduled appointments from calls
+          View all scheduled appointments from Cal.com
         </p>
       </div>
 
@@ -107,7 +104,7 @@ export default function Appointments() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Appointments</p>
-                <p className="text-2xl font-bold mt-1">{appointmentCalls?.length ?? 0}</p>
+                <p className="text-2xl font-bold mt-1">{bookings?.length ?? 0}</p>
               </div>
               <Calendar className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -118,10 +115,18 @@ export default function Appointments() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Cal.com Verified</p>
-                <p className="text-2xl font-bold mt-1 text-blue-600">{verifiedCount}</p>
+                <p className="text-sm font-medium text-muted-foreground">This Week</p>
+                <p className="text-2xl font-bold mt-1 text-blue-600">
+                  {bookings?.filter(b => {
+                    const start = new Date(b.start);
+                    const now = new Date();
+                    const weekFromNow = new Date(now);
+                    weekFromNow.setDate(now.getDate() + 7);
+                    return start >= now && start <= weekFromNow;
+                  }).length ?? 0}
+                </p>
               </div>
-              <CheckCircle2 className="h-8 w-8 text-blue-600" />
+              <Clock className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -130,10 +135,18 @@ export default function Appointments() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Not Verified</p>
-                <p className="text-2xl font-bold mt-1 text-yellow-600">{unverifiedCount}</p>
+                <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                <p className="text-2xl font-bold mt-1 text-green-600">
+                  {bookings?.filter(b => {
+                    const start = new Date(b.start);
+                    const now = new Date();
+                    const monthFromNow = new Date(now);
+                    monthFromNow.setMonth(now.getMonth() + 1);
+                    return start >= now && start <= monthFromNow;
+                  }).length ?? 0}
+                </p>
               </div>
-              <AlertCircle className="h-8 w-8 text-yellow-600" />
+              <User className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
@@ -145,23 +158,13 @@ export default function Appointments() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by customer name, phone number, or call ID..."
+                placeholder="Search by name, email, phone, or title..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
                 data-testid="input-search-appointments"
               />
             </div>
-            <Select value={verificationFilter} onValueChange={setVerificationFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]" data-testid="select-verification-filter">
-                <SelectValue placeholder="Filter by verification" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Appointments</SelectItem>
-                <SelectItem value="verified">Cal.com Verified</SelectItem>
-                <SelectItem value="unverified">Not Verified</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           {isLoading ? (
@@ -170,16 +173,16 @@ export default function Appointments() {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : !filteredAppointments || filteredAppointments.length === 0 ? (
+          ) : !sortedBookings || sortedBookings.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Calendar className="h-12 w-12 text-muted-foreground mb-3" />
               <h3 className="text-lg font-semibold mb-1">
-                {search || verificationFilter !== "all" ? "No appointments found" : "No appointments yet"}
+                {search ? "No appointments found" : "No appointments yet"}
               </h3>
               <p className="text-sm text-muted-foreground text-center max-w-sm">
-                {search || verificationFilter !== "all" 
-                  ? "Try adjusting your filters" 
-                  : "Appointments will appear here when customers schedule during calls"}
+                {search 
+                  ? "Try adjusting your search" 
+                  : "Upcoming appointments from Cal.com will appear here"}
               </p>
             </div>
           ) : (
@@ -188,98 +191,82 @@ export default function Appointments() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Phone Number</TableHead>
-                    <TableHead>Appointment Details</TableHead>
-                    <TableHead>Verification</TableHead>
-                    <TableHead>Call Date</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Appointment</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date & Time</TableHead>
                     <TableHead>Duration</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAppointments?.map((call) => {
-                    const analysis = call.aiAnalysis as CallAnalysisResult | null;
-                    const customerName = analysis?.customerName ?? null;
-                    const appointmentDetails = analysis?.appointmentDetails ?? null;
-                    const calcomVerification = analysis?.calcomVerification;
+                  {sortedBookings?.map((booking) => {
+                    const attendee = booking.attendees?.[0];
+                    const customerName = attendee?.name || 'No name';
+                    const phoneNumber = attendee?.phoneNumber || '';
+                    const email = attendee?.email || '';
                     
                     return (
                       <TableRow 
-                        key={call.id} 
-                        className="hover-elevate cursor-pointer" 
-                        onClick={() => setLocation(`/calls/${call.id}`)}
-                        data-testid={`row-appointment-${call.id}`}
+                        key={booking.uid} 
+                        className="hover-elevate"
+                        data-testid={`row-appointment-${booking.uid}`}
                       >
-                        <TableCell className="font-medium" data-testid={`text-customer-${call.id}`}>
+                        <TableCell className="font-medium" data-testid={`text-customer-${booking.uid}`}>
                           <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                              <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                              <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                             </div>
                             <div>
-                              {customerName ? (
-                                <span className="font-medium">{customerName}</span>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">Unknown</span>
-                              )}
+                              <div className="font-medium">{customerName}</div>
+                              <div className="text-xs text-muted-foreground">{email}</div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-sm">{call.toNumber}</TableCell>
                         <TableCell>
-                          {appointmentDetails ? (
-                            <span className="text-sm">{appointmentDetails}</span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No details provided</span>
+                          {phoneNumber && (
+                            <div className="flex items-center gap-1 text-sm font-mono">
+                              <Phone className="h-3 w-3 text-muted-foreground" />
+                              {phoneNumber}
+                            </div>
+                          )}
+                          {!phoneNumber && (
+                            <span className="text-sm text-muted-foreground">No phone</span>
                           )}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            {calcomVerification ? (
-                              <>
-                                {calcomVerification.verified ? (
-                                  <Badge variant="default" className="w-fit gap-1" data-testid={`badge-verification-${call.id}`}>
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Verified
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="w-fit gap-1" data-testid={`badge-verification-${call.id}`}>
-                                    <AlertCircle className="h-3 w-3" />
-                                    Not Verified
-                                  </Badge>
-                                )}
-                                {calcomVerification.verified && calcomVerification.bookingStart && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {format(new Date(calcomVerification.bookingStart), 'MMM dd, HH:mm')}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <Badge variant="outline" className="w-fit gap-1">
-                                <HelpCircle className="h-3 w-3" />
-                                Not Checked
-                              </Badge>
+                            <span className="font-medium">{booking.title}</span>
+                            {booking.description && (
+                              <span className="text-xs text-muted-foreground line-clamp-1">
+                                {booking.description}
+                              </span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {call.startTimestamp 
-                            ? format(new Date(call.startTimestamp), 'MMM dd, HH:mm')
-                            : (call.createdAt ? format(new Date(call.createdAt), 'MMM dd, HH:mm') : '-')
-                          }
+                        <TableCell>
+                          <Badge 
+                            variant={booking.status === 'accepted' ? 'default' : 'secondary'}
+                            className="w-fit"
+                            data-testid={`badge-status-${booking.uid}`}
+                          >
+                            {booking.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <div className="text-sm font-medium">
+                              {format(new Date(booking.start), 'MMM dd, yyyy')}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(booking.start), 'HH:mm')} - {format(new Date(booking.end), 'HH:mm')}
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm">
                             <Clock className="h-3 w-3 text-muted-foreground" />
-                            {formatDuration(call.durationMs)}
+                            {booking.duration} min
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Link href={`/calls/${call.id}`}>
-                            <Button variant="ghost" size="sm" data-testid={`button-view-${call.id}`}>
-                              <ExternalLink className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                          </Link>
                         </TableCell>
                       </TableRow>
                     );
@@ -289,9 +276,9 @@ export default function Appointments() {
             </div>
           )}
 
-          {filteredAppointments && filteredAppointments.length > 0 && (
+          {sortedBookings && sortedBookings.length > 0 && (
             <div className="text-sm text-muted-foreground text-center mt-4">
-              Showing {filteredAppointments.length} of {appointmentCalls?.length || 0} appointments
+              Showing {sortedBookings.length} upcoming appointments
             </div>
           )}
         </CardContent>
