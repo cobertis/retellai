@@ -871,6 +871,62 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Download phone list as CSV
+  app.get("/api/phone-lists/:id/download", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = getUserId(req);
+      const { id } = req.params;
+
+      // Get the phone list
+      const phoneList = await storage.getPhoneList(id);
+      if (!phoneList) {
+        return res.status(404).json({ message: "Phone list not found" });
+      }
+
+      // Security: Verify list belongs to authenticated user
+      if (phoneList.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Get all phone numbers from this list
+      const phoneNumbers = await storage.getPhoneNumbersByList(id);
+      if (phoneNumbers.length === 0) {
+        return res.status(400).json({ message: "No contacts in this list" });
+      }
+
+      // Generate CSV content
+      const csvHeaders = ['First Name', 'Last Name', 'Phone Number', 'Email'];
+      const csvRows = phoneNumbers.map(contact => [
+        contact.firstName || '',
+        contact.lastName || '',
+        contact.phoneNumber || '',
+        contact.email || ''
+      ]);
+
+      // Combine headers and rows
+      const csvContent = [
+        csvHeaders.join(','),
+        ...csvRows.map(row => row.map(field => {
+          // Escape fields that contain commas or quotes
+          if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+            return `"${field.replace(/"/g, '""')}"`;
+          }
+          return field;
+        }).join(','))
+      ].join('\n');
+
+      // Set headers for file download
+      const fileName = `${phoneList.name.replace(/[^a-z0-9]/gi, '_')}_contacts.csv`;
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(csvContent);
+
+    } catch (error: any) {
+      console.error("❌ Error downloading phone list:", error);
+      res.status(500).send(error.message || "Failed to download phone list");
+    }
+  });
+
   // Get classification progress
   app.get("/api/classify-progress/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {

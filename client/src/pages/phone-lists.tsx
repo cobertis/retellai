@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Upload, List, Trash2, Loader2, FileText, Eye, Sparkles, X, Check } from "lucide-react";
+import { Plus, Upload, List, Trash2, Loader2, FileText, Eye, Sparkles, X, Check, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -299,13 +299,22 @@ export default function PhoneLists() {
                           <Button
                             variant="default"
                             size="sm"
-                            className="flex-1"
                             data-testid={`button-view-details-${list.id}`}
                           >
                             <Eye className="h-3 w-3 mr-1" />
-                            View Details
+                            View
                           </Button>
                         </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            window.location.href = `/api/phone-lists/${list.id}/download`;
+                          }}
+                          data-testid={`button-download-${list.id}`}
+                        >
+                          <Download className="h-3 w-3" />
+                        </Button>
                         <Button
                           variant="destructive"
                           size="sm"
