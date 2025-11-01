@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Phone, Clock, DollarSign, TrendingUp, Download, Play, ExternalLink } from "lucide-react";
+import { ArrowLeft, Phone, Clock, DollarSign, TrendingUp, Download, Play, ExternalLink, Sparkles, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import type { Call, CallLog } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 function TokenUsageDisplay({ tokenUsage }: { tokenUsage: { average?: number; num_requests?: number; values?: number[] } }) {
   return (
@@ -72,6 +74,7 @@ function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }>
 }
 
 export default function CallDetail() {
+  const { toast } = useToast();
   const [, params] = useRoute("/calls/:id");
   const callId = params?.id;
 
@@ -83,6 +86,26 @@ export default function CallDetail() {
   const { data: callLog, isLoading: logLoading } = useQuery<CallLog>({
     queryKey: [`/api/calls/${callId}/log`],
     enabled: !!callId,
+  });
+
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/calls/${callId}/analyze`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/calls/${callId}`] });
+      toast({
+        title: "Analysis complete",
+        description: "Call has been analyzed with ChatGPT",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Analysis failed",
+        description: error.message || "Failed to analyze call",
+        variant: "destructive",
+      });
+    },
   });
 
   const isLoading = callLoading || logLoading;
@@ -397,15 +420,143 @@ export default function CallDetail() {
         <TabsContent value="analysis" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Call Analysis</CardTitle>
-              <CardDescription>
-                AI-generated insights and metrics
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Call Analysis</CardTitle>
+                  <CardDescription>
+                    AI-generated insights and metrics
+                  </CardDescription>
+                </div>
+                {callLog?.transcript && !call?.aiAnalysis && (
+                  <Button
+                    onClick={() => analyzeMutation.mutate()}
+                    disabled={analyzeMutation.isPending}
+                    size="sm"
+                    data-testid="button-analyze-call"
+                  >
+                    {analyzeMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Analyze with ChatGPT
+                      </>
+                    )}
+                  </Button>
+                )}
+                {call?.aiAnalysis && (
+                  <Button
+                    onClick={() => analyzeMutation.mutate()}
+                    disabled={analyzeMutation.isPending}
+                    size="sm"
+                    variant="outline"
+                    data-testid="button-reanalyze-call"
+                  >
+                    {analyzeMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Re-analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Re-analyze
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {call?.aiAnalysis && (() => {
+                const analysis = call.aiAnalysis as any;
+                return (
+                  <div className="border-2 border-primary/20 rounded-lg p-4 bg-primary/5 space-y-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      <h3 className="text-lg font-semibold">ChatGPT Analysis</h3>
+                    </div>
+                    
+                    {analysis.summary && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">Summary</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{analysis.summary}</p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {analysis.sentiment && (
+                        <div className="bg-card p-3 rounded-md">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Sentiment</p>
+                          <Badge variant={
+                            analysis.sentiment === 'positive' ? 'default' :
+                            analysis.sentiment === 'negative' ? 'destructive' : 'secondary'
+                          }>
+                            {analysis.sentiment}
+                          </Badge>
+                        </div>
+                      )}
+                      {analysis.callQuality && (
+                        <div className="bg-card p-3 rounded-md">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Call Quality</p>
+                          <Badge variant={
+                            analysis.callQuality === 'excellent' || analysis.callQuality === 'good' ? 'default' : 'secondary'
+                          }>
+                            {analysis.callQuality}
+                          </Badge>
+                        </div>
+                      )}
+                      {analysis.customerIntent && (
+                        <div className="bg-card p-3 rounded-md">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Customer Intent</p>
+                          <p className="text-sm font-semibold">{analysis.customerIntent}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {analysis.keyTopics && analysis.keyTopics.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">Key Topics</p>
+                        <div className="flex flex-wrap gap-2">
+                          {analysis.keyTopics.map((topic: string, idx: number) => (
+                            <Badge key={idx} variant="outline">
+                              {topic}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {analysis.actionItems && analysis.actionItems.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">Action Items</p>
+                        <ul className="space-y-1">
+                          {analysis.actionItems.map((item: string, idx: number) => (
+                            <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-primary mt-1">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {analysis.notes && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">Additional Notes</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{analysis.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() as React.ReactElement}
+
               {callLog?.callSummary && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Call Summary</p>
+                <div className="border-t pt-4">
+                  <p className="text-sm font-medium mb-2">Call Summary (Retell AI)</p>
                   <p className="text-sm text-muted-foreground">{callLog.callSummary}</p>
                 </div>
               )}

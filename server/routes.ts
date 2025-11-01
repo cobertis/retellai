@@ -986,7 +986,7 @@ export function registerRoutes(app: Express) {
       
       // Store analyses
       let stored = 0;
-      for (const [callId, analysis] of results.entries()) {
+      for (const [callId, analysis] of Array.from(results.entries())) {
         try {
           await storage.updateCall(callId, {
             aiAnalysis: analysis as any,
