@@ -5,16 +5,26 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Settings as SettingsIcon, User, Key, Bell, Bot } from "lucide-react";
+import { Settings as SettingsIcon, User, Key, Bell, Bot, Calendar } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [agentId, setAgentId] = useState(user?.defaultAgentId || "");
+  const [calcomApiKey, setCalcomApiKey] = useState(user?.calcomApiKey || "");
+  const [calcomEventTypeId, setCalcomEventTypeId] = useState(user?.calcomEventTypeId || "");
+
+  useEffect(() => {
+    if (user) {
+      setAgentId(user.defaultAgentId || "");
+      setCalcomApiKey(user.calcomApiKey || "");
+      setCalcomEventTypeId(user.calcomEventTypeId || "");
+    }
+  }, [user]);
 
   const updateAgentMutation = useMutation({
     mutationFn: async (defaultAgentId: string | undefined) => {
@@ -48,9 +58,39 @@ export default function Settings() {
     },
   });
 
+  const updateCalcomMutation = useMutation({
+    mutationFn: async (data: { calcomApiKey: string; calcomEventTypeId: string }) => {
+      const response = await apiRequest("PATCH", "/api/user/settings", data);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({
+        title: "Cal.com settings saved",
+        description: "Your Cal.com integration has been configured successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save Cal.com settings. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSaveAgent = () => {
     const trimmedId = agentId.trim();
     updateAgentMutation.mutate(trimmedId || undefined);
+  };
+
+  const handleSaveCalcom = () => {
+    const trimmedApiKey = calcomApiKey.trim();
+    const trimmedEventTypeId = calcomEventTypeId.trim();
+    updateCalcomMutation.mutate({
+      calcomApiKey: trimmedApiKey || undefined as any,
+      calcomEventTypeId: trimmedEventTypeId || undefined as any,
+    });
   };
 
   return (
@@ -144,6 +184,57 @@ export default function Settings() {
                 Enter the Agent ID from your Retell AI dashboard. This agent will be used for all campaigns you create.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              <CardTitle>Cal.com Integration</CardTitle>
+            </div>
+            <CardDescription>
+              Configure Cal.com to sync appointment data with your calls
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="calcom-api-key">Cal.com API Key</Label>
+              <Input
+                id="calcom-api-key"
+                type="password"
+                placeholder="cal_live_xxxxxxxxxxxxxxxx"
+                value={calcomApiKey}
+                onChange={(e) => setCalcomApiKey(e.target.value)}
+                className="font-mono text-sm"
+                data-testid="input-calcom-api-key"
+              />
+              <p className="text-xs text-muted-foreground">
+                Get your API key from Cal.com Settings → Security → API Keys
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="calcom-event-type-id">Event Type ID</Label>
+              <Input
+                id="calcom-event-type-id"
+                type="text"
+                placeholder="123456"
+                value={calcomEventTypeId}
+                onChange={(e) => setCalcomEventTypeId(e.target.value)}
+                className="font-mono text-sm"
+                data-testid="input-calcom-event-type-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                Find your Event Type ID in Cal.com Event Types settings
+              </p>
+            </div>
+            <Button
+              onClick={handleSaveCalcom}
+              disabled={updateCalcomMutation.isPending}
+              data-testid="button-save-calcom-settings"
+            >
+              {updateCalcomMutation.isPending ? "Saving..." : "Save Cal.com Settings"}
+            </Button>
           </CardContent>
         </Card>
 
