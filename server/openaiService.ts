@@ -200,14 +200,13 @@ Example response:
           messages: [
             {
               role: 'system',
-              content: 'You are an expert in onomastics (study of names) with deep knowledge of Hispanic and Latino naming patterns. Analyze each name individually and intelligently, considering cultural and linguistic origins.'
+              content: 'You are an expert in onomastics (study of names) with deep knowledge of Hispanic and Latino naming patterns. Analyze each name individually and intelligently, considering cultural and linguistic origins. Always respond with a valid JSON array.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          response_format: { type: 'json_object' },
           temperature: 0.2,
         });
 
@@ -220,7 +219,10 @@ Example response:
         let batchResults: { name: string; hispanic: boolean }[] = [];
         try {
           const parsed = JSON.parse(response);
-          batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
+          // OpenAI might return array directly or wrapped in object
+          batchResults = Array.isArray(parsed) ? parsed : (parsed.results || parsed.classifications || []);
+          
+          console.log(`✓ Batch ${batchNum}: Parsed ${batchResults.length} results`);
         } catch (parseError) {
           // If JSON is truncated, try to extract what we can
           console.log(`⚠️  Batch ${batchNum}/${totalBatches}: JSON parse failed, using fallback`);
