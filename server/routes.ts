@@ -222,7 +222,8 @@ async function processConcurrently<T>(
   batchSize: number,
   processor: (item: T) => Promise<{ callId: string } | null>,
   campaignId?: string,
-  userId?: string
+  userId?: string,
+  startFromBatch: number = 0
 ): Promise<void> {
   // Split items into batches of 20
   const batches: T[][] = [];
@@ -231,14 +232,24 @@ async function processConcurrently<T>(
   }
 
   console.log(`📦 Processing ${items.length} items in ${batches.length} batches of ${batchSize}`);
+  
+  // Update campaign state in DB at the start
+  if (campaignId) {
+    await storage.updateCampaign(campaignId, {
+      totalBatches: batches.length,
+      currentBatch: startFromBatch,
+      isRunning: true
+    });
+  }
 
-  // Process each batch sequentially
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+  // Process each batch sequentially, starting from startFromBatch
+  for (let batchIndex = startFromBatch; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     
     // Check if campaign is paused
     if (campaignId && pausedCampaigns.has(campaignId)) {
       console.log(`⏸️  Campaign ${campaignId} is paused. Stopping batch processing.`);
+      await storage.updateCampaign(campaignId, { isRunning: false });
       break;
     }
 
@@ -265,9 +276,21 @@ async function processConcurrently<T>(
     }
 
     console.log(`✓ Batch ${batchIndex + 1}/${batches.length} complete\n`);
+    
+    // Update current batch in DB after completing this batch
+    if (campaignId) {
+      await storage.updateCampaign(campaignId, {
+        currentBatch: batchIndex + 1
+      });
+    }
   }
 
   console.log(`🎉 All ${batches.length} batches processed!`);
+  
+  // Mark campaign as not running when done
+  if (campaignId) {
+    await storage.updateCampaign(campaignId, { isRunning: false });
+  }
 }
 
 // Wait for specific call IDs to reach terminal status (completed, failed, etc)
