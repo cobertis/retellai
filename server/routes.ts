@@ -216,88 +216,97 @@ async function classifyListAsync(
   }
 }
 
-// Helper function to process calls with strict concurrency control
-// This ensures we NEVER exceed the Retell API limit of 20 concurrent active calls
-// Items are processed sequentially with a queue - when one completes, the next starts
+// Simple batch processor: Launch 20 calls at once, wait for ALL to finish, then next batch
 async function processConcurrently<T>(
   items: T[],
-  concurrencyLimit: number,
-  processor: (item: T) => Promise<void>,
+  batchSize: number,
+  processor: (item: T) => Promise<{ callId: string } | null>,
   campaignId?: string,
   userId?: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let index = 0;
-    let activeWorkers = 0;
-    let hasError = false;
+  // Split items into batches of 20
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    batches.push(items.slice(i, i + batchSize));
+  }
 
-    async function processNext(): Promise<void> {
-      // Check if campaign is paused
-      if (campaignId && pausedCampaigns.has(campaignId)) {
-        // If paused, wait 1 second and check again
-        setTimeout(() => processNext(), 1000);
-        return;
-      }
+  console.log(`📦 Processing ${items.length} items in ${batches.length} batches of ${batchSize}`);
 
-      // If we've processed all items, check if we're done
-      if (index >= items.length) {
-        if (activeWorkers === 0) {
-          resolve();
-        }
-        return;
-      }
-
-      // Check ACTUAL active calls in Retell (not just workers)
-      // This ensures we never exceed Retell's 20 concurrent call limit
-      let actualActiveCalls = 0;
-      if (userId) {
-        try {
-          actualActiveCalls = await storage.getInProgressCallsCount(userId);
-        } catch (error) {
-          console.error("Error checking active calls:", error);
-        }
-      }
-
-      // Wait if we're at or over the limit
-      if (actualActiveCalls >= concurrencyLimit) {
-        console.log(`⏸️  Queue waiting... (${actualActiveCalls}/${concurrencyLimit} active calls, ${items.length - index} remaining)`);
-        // Wait 5 seconds and check again (longer to let calls complete)
-        setTimeout(() => processNext(), 5000);
-        return;
-      }
-
-      // Don't exceed worker limit either (backup safety)
-      if (activeWorkers >= concurrencyLimit) {
-        return;
-      }
-
-      // Take next item and increment counters
-      const currentIndex = index++;
-      activeWorkers++;
-
-      console.log(`🚀 Processing ${currentIndex + 1}/${items.length} (${actualActiveCalls} active calls)`);
-
-      // Process item asynchronously
-      processor(items[currentIndex])
-        .then(() => {
-          activeWorkers--;
-          // Longer delay before starting next to prevent API rate limiting
-          setTimeout(() => processNext(), 1500);
-        })
-        .catch((error) => {
-          console.error(`Error processing item ${currentIndex}:`, error);
-          activeWorkers--;
-          // Continue processing even if one fails (with longer delay)
-          setTimeout(() => processNext(), 1500);
-        });
-
-      // Don't try to fill immediately - let it process one at a time
-      // processNext() will be called from the then/catch callbacks above
+  // Process each batch sequentially
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+    
+    // Check if campaign is paused
+    if (campaignId && pausedCampaigns.has(campaignId)) {
+      console.log(`⏸️  Campaign ${campaignId} is paused. Stopping batch processing.`);
+      break;
     }
 
-    // Start with just 1 worker to prevent overwhelming API
-    processNext();
-  });
+    console.log(`\n🚀 Starting batch ${batchIndex + 1}/${batches.length} (${batch.length} calls)`);
+
+    // Launch all calls in this batch simultaneously
+    const results = await Promise.allSettled(
+      batch.map(item => processor(item))
+    );
+
+    // Collect call IDs from successful creations
+    const callIds: string[] = [];
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value?.callId) {
+        callIds.push(result.value.callId);
+      }
+    });
+
+    console.log(`✅ Batch ${batchIndex + 1} launched: ${callIds.length} calls created`);
+
+    // Wait for ALL calls in this batch to complete before moving to next batch
+    if (callIds.length > 0) {
+      await waitUntilCallsComplete(callIds, campaignId);
+    }
+
+    console.log(`✓ Batch ${batchIndex + 1}/${batches.length} complete\n`);
+  }
+
+  console.log(`🎉 All ${batches.length} batches processed!`);
+}
+
+// Wait for specific call IDs to reach terminal status (completed, failed, etc)
+async function waitUntilCallsComplete(callIds: string[], campaignId?: string): Promise<void> {
+  const maxWaitTime = 5 * 60 * 1000; // 5 minutes max per batch
+  const pollInterval = 5000; // Check every 5 seconds
+  const startTime = Date.now();
+
+  while (true) {
+    // Check if campaign is paused
+    if (campaignId && pausedCampaigns.has(campaignId)) {
+      console.log(`⏸️  Campaign ${campaignId} paused during wait. Stopping.`);
+      return;
+    }
+
+    // Check if we've exceeded max wait time
+    if (Date.now() - startTime > maxWaitTime) {
+      console.log(`⏰ Timeout waiting for calls to complete. Moving to next batch.`);
+      return;
+    }
+
+    // Check status of all calls in this batch
+    const calls = await Promise.all(
+      callIds.map(id => storage.getCall(id).catch(() => null))
+    );
+
+    // Count how many are still in progress
+    const inProgress = calls.filter(call => 
+      call && call.callStatus !== 'ended' && call.callStatus !== 'failed'
+    ).length;
+
+    if (inProgress === 0) {
+      console.log(`✓ All ${callIds.length} calls completed`);
+      return;
+    }
+
+    console.log(`⏳ Waiting for ${inProgress}/${callIds.length} calls to complete...`);
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
 }
 
 export function registerRoutes(app: Express) {
@@ -1067,7 +1076,7 @@ export function registerRoutes(app: Express) {
 
         // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
         console.log(`🚀 Starting campaign ${campaign.id} with ${phoneNumbers.length} calls in background...`);
-        void processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
+        void processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
           try {
             const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
             const retellCall = await retellService.createPhoneCall({
@@ -1112,6 +1121,8 @@ export function registerRoutes(app: Express) {
 
             // Atomic increment - no race conditions
             await storage.incrementCampaignInProgress(campaign.id);
+            
+            return { callId: retellCall.call_id };
           } catch (error) {
             console.error("Error creating call:", error);
             
@@ -1154,6 +1165,8 @@ export function registerRoutes(app: Express) {
             
             // Atomic increment - no race conditions
             await storage.incrementCampaignFailed(campaign.id);
+            
+            return null;
           }
         }, campaign.id, userId).catch(async (error) => {
           console.error(`❌ Fatal error in campaign ${campaign.id} background processing:`, error);
@@ -1199,7 +1212,7 @@ export function registerRoutes(app: Express) {
 
       // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
       console.log(`🚀 Starting campaign ${id} with ${phoneNumbers.length} calls in background...`);
-      void processConcurrently(phoneNumbers, 20, async (phoneNumber) => {
+      void processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
         try {
           // Create call in Retell AI
           const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
@@ -1244,6 +1257,8 @@ export function registerRoutes(app: Express) {
             userSentiment: null,
             inVoicemail: null,
           });
+          
+          return { callId: retellCall.call_id };
         } catch (error) {
           console.error("Error creating call:", error);
           
@@ -1285,6 +1300,8 @@ export function registerRoutes(app: Express) {
           }
           
           await storage.incrementCampaignFailed(id);
+          
+          return null;
         }
       }, id, userId).catch(async (error) => {
         console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
@@ -1450,7 +1467,7 @@ export function registerRoutes(app: Express) {
       });
 
       // Start retrying in background
-      void processConcurrently(numbersToRetry, 20, async (phoneNumber) => {
+      void processConcurrently(numbersToRetry, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
         try {
           const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
           const retellCall = await retellService.createPhoneCall({
@@ -1495,8 +1512,10 @@ export function registerRoutes(app: Express) {
           });
 
           console.log(`✅ Retry call created for ${toNumber}`);
+          return { callId: retellCall.call_id };
         } catch (error) {
           console.error("Error retrying call:", error);
+          return null;
         }
       }, id, userId).catch(async (error) => {
         console.error(`❌ Error in retry process for campaign ${id}:`, error);
