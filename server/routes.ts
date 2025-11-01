@@ -221,11 +221,17 @@ async function processConcurrently<T>(
 ): Promise<void> {
   const results: Promise<void>[] = [];
   let index = 0;
+  const delayBetweenCalls = 1000; // 1 second delay between each call creation
 
   async function processNext(): Promise<void> {
     while (index < items.length) {
       const currentIndex = index++;
       await processor(items[currentIndex]);
+      
+      // Add delay before processing next item
+      if (index < items.length) {
+        await new Promise(resolve => setTimeout(resolve, delayBetweenCalls));
+      }
     }
   }
 
