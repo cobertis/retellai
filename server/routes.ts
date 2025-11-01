@@ -253,6 +253,34 @@ async function processConcurrently<T>(
       break;
     }
 
+    // Check Retell concurrency limits before launching batch
+    const concurrency = await retellService.getConcurrency();
+    const batchSize = batch.length;
+    
+    if (concurrency.availableSlots < batchSize) {
+      console.log(`⚠️  CONCURRENCY LIMIT REACHED: ${concurrency.currentConcurrency}/${concurrency.concurrencyLimit} active calls`);
+      console.log(`   Batch needs ${batchSize} slots but only ${concurrency.availableSlots} available`);
+      console.log(`   Waiting 30 seconds for calls to complete...`);
+      
+      // Wait 30 seconds and try again
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      
+      // Re-check after waiting
+      const newConcurrency = await retellService.getConcurrency();
+      console.log(`🔄 After waiting: ${newConcurrency.currentConcurrency}/${newConcurrency.concurrencyLimit} active, ${newConcurrency.availableSlots} slots available`);
+      
+      if (newConcurrency.availableSlots < batchSize) {
+        console.log(`❌ Still not enough slots. Pausing campaign.`);
+        if (campaignId) {
+          await storage.updateCampaignStatus(campaignId, 'paused');
+          await storage.updateCampaign(campaignId, { isRunning: false });
+        }
+        throw new Error(`Concurrency limit reached: ${newConcurrency.currentConcurrency}/${newConcurrency.concurrencyLimit} calls active. Please wait for calls to complete or upgrade your plan.`);
+      }
+    }
+    
+    console.log(`✅ Concurrency check passed: ${concurrency.currentConcurrency}/${concurrency.concurrencyLimit} active, ${concurrency.availableSlots} slots available`);
+
     console.log(`\n🚀 Starting batch ${batchIndex + 1}/${batches.length} (${batch.length} calls)`);
 
     // Launch all calls in this batch simultaneously
@@ -438,7 +466,7 @@ export async function resumeCampaign(campaignId: string): Promise<void> {
     const userId = campaign.userId;
 
     // Resume processing from the current batch
-    void processConcurrently(
+    processConcurrently(
       phoneNumbers, 
       campaign.concurrencyLimit || 20, 
       async (phoneNumber): Promise<{ callId: string } | null> => {
@@ -496,7 +524,16 @@ export async function resumeCampaign(campaignId: string): Promise<void> {
       campaignId,
       userId,
       campaign.currentBatch || 0
-    );
+    ).catch(async (error) => {
+      console.error(`❌ Fatal error in campaign ${campaignId} resume:`, error);
+      // Mark campaign as failed on fatal errors (including concurrency limit)
+      try {
+        await storage.updateCampaignStatus(campaignId, 'failed');
+        await storage.updateCampaign(campaignId, { isRunning: false });
+      } catch (updateError) {
+        console.error('Failed to update campaign status:', updateError);
+      }
+    });
   } catch (error) {
     console.error(`Error resuming campaign ${campaignId}:`, error);
   }
@@ -721,6 +758,17 @@ export function registerRoutes(app: Express) {
       res.status(204).send();
     } catch (error: any) {
       console.error("Error deleting agent:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get current Retell concurrency status
+  app.get("/api/retell/concurrency", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const concurrency = await retellService.getConcurrency();
+      res.json(concurrency);
+    } catch (error: any) {
+      console.error("Error getting concurrency:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -1269,7 +1317,7 @@ export function registerRoutes(app: Express) {
 
         // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
         console.log(`🚀 Starting campaign ${campaign.id} with ${phoneNumbers.length} calls in background...`);
-        void processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
+        processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
           try {
             const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
             const retellCall = await retellService.createPhoneCall({
@@ -1405,7 +1453,7 @@ export function registerRoutes(app: Express) {
 
       // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
       console.log(`🚀 Starting campaign ${id} with ${phoneNumbers.length} calls in background...`);
-      void processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
+      processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
         try {
           // Create call in Retell AI
           const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
@@ -1660,7 +1708,7 @@ export function registerRoutes(app: Express) {
       });
 
       // Start retrying in background
-      void processConcurrently(numbersToRetry, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
+      processConcurrently(numbersToRetry, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
         try {
           const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
           const retellCall = await retellService.createPhoneCall({

@@ -30,7 +30,7 @@ Preferred communication style: Simple, everyday language.
 ### System Design Choices
 - **Call Queue Management**: `calls` table includes `callAttempts`, `lastAttemptAt`, and `canRetry` fields. `campaigns` table has `concurrencyLimit`.
 - **Smart Retry Logic**: Webhook determines retry eligibility based on `disconnection_reason`. Retriable reasons: `dial_failed`, `dial_no_answer`, `dial_busy`. Configurable retry limits (default: 3).
-- **Concurrency Control**: Dual-tier throttling with a global limit (20 concurrent calls per user) and per-campaign `concurrencyLimit`.
+- **Concurrency Control**: Dual-tier throttling with a global limit (20 concurrent calls per user from Retell AI) and per-campaign `concurrencyLimit`. System verifies available slots before each batch, waits if necessary, and pauses campaign if limit is reached.
 - **Campaign Persistence & Auto-Resume**: Campaign execution state is now persisted in the database using `currentBatch`, `totalBatches`, and `isRunning` fields. On server startup, the system automatically resumes any campaigns that were running when the server stopped, continuing from the last completed batch. This ensures campaigns survive server restarts without losing progress.
 - **Contact Tracking**: `phone_numbers` table includes `contacted` and `lastContactedAt` fields to track which numbers have been successfully reached. Campaign initialization automatically filters out already-contacted numbers to prevent duplicate calls.
 - **Call Timeout Protection**: Individual calls have a 10-minute timeout to prevent stuck calls from blocking batch progression. Calls exceeding this timeout are automatically marked as failed, allowing the batch to continue.

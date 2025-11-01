@@ -69,6 +69,22 @@ export class RetellService {
     }
   }
 
+  async getConcurrency() {
+    try {
+      const concurrency = await retellClient.concurrency.retrieve();
+      return {
+        currentConcurrency: concurrency.current_concurrency || 0,
+        concurrencyLimit: concurrency.concurrency_limit || 20,
+        baseConcurrency: concurrency.base_concurrency || 20,
+        purchasedConcurrency: concurrency.purchased_concurrency || 0,
+        availableSlots: (concurrency.concurrency_limit || 20) - (concurrency.current_concurrency || 0),
+      };
+    } catch (error: any) {
+      console.error('Error getting Retell concurrency:', error);
+      throw new Error(error.message || 'Failed to get concurrency');
+    }
+  }
+
   async createPhoneCall(params: CreatePhoneCallParams) {
     try {
       const call = await retellClient.call.createPhoneCall(params as any);
