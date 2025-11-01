@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   defaultAgentId: varchar("default_agent_id"),
+  calcomApiKey: varchar("calcom_api_key"),
+  calcomEventTypeId: varchar("calcom_event_type_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
