@@ -163,17 +163,15 @@ Provide a clear, concise explanation in Spanish of what happened and why no appo
       return [];
     }
 
-    // Process in batches of 50 for efficiency
-    const batchSize = 50;
-    const results: { hispanic: boolean; name: string }[] = [];
+    // Process in larger batches with parallel processing for speed
+    const batchSize = 100; // Increased from 50 for efficiency
+    const parallelLimit = 10; // Process 10 batches at once
     const totalBatches = Math.ceil(names.length / batchSize);
+    
+    console.log(`Starting parallel classification: ${names.length} names in ${totalBatches} batches (${parallelLimit} concurrent)`);
 
-    for (let i = 0; i < names.length; i += batchSize) {
-      const batch = names.slice(i, i + batchSize);
-      const currentBatch = Math.floor(i / batchSize) + 1;
-      
-      console.log(`Processing batch ${currentBatch}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, names.length)} of ${names.length} names)...`);
-      
+    // Helper function to process a single batch
+    const processBatch = async (batch: string[], batchNum: number): Promise<{ hispanic: boolean; name: string }[]> => {
       const prompt = `Analyze the following list of names and determine if each person is likely Hispanic/Latino or not. 
       
 Consider cultural and linguistic indicators, name origins, and common Hispanic naming patterns. 
@@ -220,16 +218,35 @@ Example response:
 
         const parsed = JSON.parse(response);
         const batchResults = Array.isArray(parsed) ? parsed : parsed.results || [];
-        results.push(...batchResults);
         
-        // Log progress
-        const percentComplete = Math.round((currentBatch / totalBatches) * 100);
-        console.log(`✓ Batch ${currentBatch}/${totalBatches} complete (${percentComplete}% total)`);
+        const percentComplete = Math.round((batchNum / totalBatches) * 100);
+        console.log(`✓ Batch ${batchNum}/${totalBatches} complete (${percentComplete}%)`);
+        
+        return batchResults;
       } catch (error: any) {
-        console.error(`✗ Error classifying batch ${currentBatch}/${totalBatches}:`, error.message);
+        console.error(`✗ Error in batch ${batchNum}/${totalBatches}:`, error.message);
         // On error, mark all names in batch as non-hispanic (safe default)
-        results.push(...batch.map(name => ({ name, hispanic: false })));
+        return batch.map(name => ({ name, hispanic: false }));
       }
+    };
+
+    // Create all batch promises
+    const batches: Promise<{ hispanic: boolean; name: string }[]>[] = [];
+    for (let i = 0; i < names.length; i += batchSize) {
+      const batch = names.slice(i, i + batchSize);
+      const batchNum = Math.floor(i / batchSize) + 1;
+      batches.push(processBatch(batch, batchNum));
+    }
+
+    // Process batches with parallelism limit
+    const results: { hispanic: boolean; name: string }[] = [];
+    for (let i = 0; i < batches.length; i += parallelLimit) {
+      const chunk = batches.slice(i, i + parallelLimit);
+      const chunkResults = await Promise.all(chunk);
+      results.push(...chunkResults.flat());
+      
+      const processedSoFar = Math.min(i + parallelLimit, batches.length);
+      console.log(`Progress: ${processedSoFar}/${batches.length} batch groups processed`);
     }
 
     console.log(`✓ Classification complete: ${results.length} names processed`);
