@@ -70,7 +70,7 @@ Preferred communication style: Simple, everyday language.
 **Schema Design** (from `shared/schema.ts`)
 
 Core entities:
-- `users`: Local authentication with bcrypt-hashed passwords, profile information
+- `users`: Local authentication with bcrypt-hashed passwords, profile information, default agent configuration, and Cal.com API credentials (calcomApiKey, calcomEventTypeId)
 - `sessions`: PostgreSQL-backed session store for express-session
 - `agents`: Retell AI agent configurations (voice settings, prompts, LLM parameters)
 - `phoneLists`: Collections of phone numbers with metadata and classification
@@ -126,7 +126,29 @@ Core entities:
 - Google Fonts CDN: Inter and JetBrains Mono font families
 - Favicon served from `/public` directory
 
+**Cal.com Integration** (Planned)
+- Cal.com API integration for appointment verification
+- Per-user Cal.com credentials stored in `users` table (`calcomApiKey`, `calcomEventTypeId`)
+- Settings page allows users to configure Cal.com API credentials
+- Future: Automatic appointment verification against Cal.com bookings
+- Supports adding, updating, and clearing Cal.com credentials (null values properly handled)
+
 **Development Tools**
 - Replit-specific Vite plugins (cartographer, dev-banner, runtime-error-modal)
 - Only loaded in development when `REPL_ID` is present
 - Source maps via `@jridgewell/trace-mapping`
+
+## Recent Changes (November 1, 2025)
+
+### Cal.com Integration Setup
+- Added `calcomApiKey` and `calcomEventTypeId` fields to `users` table for per-user Cal.com configuration
+- Implemented Settings page (`/settings`) with dedicated Cal.com Integration section
+- Backend API route (`PATCH /api/user/settings`) now supports updating Cal.com credentials
+- Proper null handling: Users can add, update, and clear Cal.com credentials
+- Settings page includes sections for:
+  - Profile Information (read-only)
+  - Retell AI Agent configuration
+  - Cal.com Integration (API Key and Event Type ID)
+  - API Configuration (Retell webhook URL)
+  - Account management (logout)
+- Multi-tenant ready: Each user has their own Cal.com credentials
