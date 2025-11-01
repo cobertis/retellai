@@ -103,8 +103,17 @@ async function classifyListAsync(
         })
       );
       
-      // Flatten results
-      results.forEach(r => allClassifications.push(...r));
+      // Flatten results and update counters in real-time
+      results.forEach(r => {
+        allClassifications.push(...r);
+        // Update counters as we process each batch
+        const hispanicInBatch = r.filter(c => c.hispanic).length;
+        const nonHispanicInBatch = r.length - hispanicInBatch;
+        progress.hispanicCount += hispanicInBatch;
+        progress.nonHispanicCount += nonHispanicInBatch;
+      });
+      
+      console.log(`📊 Progress update: ${progress.hispanicCount} Hispanic, ${progress.nonHispanicCount} Non-Hispanic`);
     }
 
     console.log(`✅ All classifications complete: ${allClassifications.length} names processed`);
