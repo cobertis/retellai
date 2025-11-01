@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Search, ExternalLink, Clock, Phone, User } from "lucide-react";
 import { format } from "date-fns";
+import type { Call } from "@shared/schema";
 
 interface CalcomBooking {
   id: number;
@@ -46,6 +47,10 @@ export default function Appointments() {
   const { data: bookings, isLoading, error } = useQuery<CalcomBooking[]>({
     queryKey: ["/api/calcom/bookings"],
     refetchInterval: 10000,
+  });
+
+  const { data: calls } = useQuery<Call[]>({
+    queryKey: ["/api/calls"],
   });
 
   // Filter bookings based on search
@@ -205,6 +210,9 @@ export default function Appointments() {
                     const phoneNumber = attendee?.phoneNumber || '';
                     const email = attendee?.email || '';
                     
+                    // Find matching call by phone number
+                    const matchingCall = calls?.find(call => call.toNumber === phoneNumber);
+                    
                     return (
                       <TableRow 
                         key={booking.uid} 
@@ -223,13 +231,19 @@ export default function Appointments() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {phoneNumber && (
+                          {phoneNumber && matchingCall ? (
+                            <Link href={`/calls/${matchingCall.id}`}>
+                              <div className="flex items-center gap-1 text-sm font-mono hover-elevate cursor-pointer text-primary hover:underline">
+                                <Phone className="h-3 w-3" />
+                                {phoneNumber}
+                              </div>
+                            </Link>
+                          ) : phoneNumber ? (
                             <div className="flex items-center gap-1 text-sm font-mono">
                               <Phone className="h-3 w-3 text-muted-foreground" />
                               {phoneNumber}
                             </div>
-                          )}
-                          {!phoneNumber && (
+                          ) : (
                             <span className="text-sm text-muted-foreground">No phone</span>
                           )}
                         </TableCell>
