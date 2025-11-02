@@ -14,6 +14,19 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Call Type Categories
+export type CallType = 
+  | 'voicemail'           // Buzón de voz
+  | 'no_answer'           // No contestó / No disponible
+  | 'not_interested'      // No interesado
+  | 'call_later'          // Pidió llamar después
+  | 'disconnected'        // Llamada cortada/interrumpida
+  | 'wrong_number'        // Número incorrecto
+  | 'already_scheduled'   // Ya tiene cita
+  | 'needs_info'          // Necesita más información
+  | 'conversation'        // Conversación completa
+  | 'other';              // Otro motivo
+
 // AI Analysis Types
 export interface CallAnalysisResult {
   summary: string;
@@ -27,6 +40,7 @@ export interface CallAnalysisResult {
   appointmentDetails?: string;
   customerName?: string;
   noAppointmentReason?: string;
+  callType?: CallType;
   calcomVerification?: {
     verified: boolean;
     bookingId?: number;

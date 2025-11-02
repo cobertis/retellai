@@ -8,9 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Search, ExternalLink, Clock, TrendingUp, RefreshCw } from "lucide-react";
+import { Phone, Search, ExternalLink, Clock, TrendingUp, RefreshCw, Voicemail, PhoneOff, XCircle, Timer, PhoneMissed, Info, MessageSquare, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
-import type { Call } from "@shared/schema";
+import type { Call, CallType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const getStatusColor = (status: string) => {
@@ -38,6 +38,75 @@ const formatDuration = (ms: number | null) => {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+const getCallTypeBadge = (callType: CallType | undefined) => {
+  if (!callType) return null;
+  
+  const configs = {
+    voicemail: {
+      label: 'Buzón de voz',
+      icon: Voicemail,
+      className: 'bg-purple-600 hover:bg-purple-700 text-white'
+    },
+    no_answer: {
+      label: 'No contestó',
+      icon: PhoneMissed,
+      className: 'bg-orange-600 hover:bg-orange-700 text-white'
+    },
+    not_interested: {
+      label: 'No interesado',
+      icon: XCircle,
+      className: 'bg-red-600 hover:bg-red-700 text-white'
+    },
+    call_later: {
+      label: 'Llamar después',
+      icon: Timer,
+      className: 'bg-blue-600 hover:bg-blue-700 text-white'
+    },
+    disconnected: {
+      label: 'Llamada cortada',
+      icon: PhoneOff,
+      className: 'bg-gray-600 hover:bg-gray-700 text-white'
+    },
+    wrong_number: {
+      label: 'Número incorrecto',
+      icon: AlertCircle,
+      className: 'bg-yellow-600 hover:bg-yellow-700 text-white'
+    },
+    already_scheduled: {
+      label: 'Ya tiene cita',
+      icon: Info,
+      className: 'bg-teal-600 hover:bg-teal-700 text-white'
+    },
+    needs_info: {
+      label: 'Necesita info',
+      icon: Info,
+      className: 'bg-cyan-600 hover:bg-cyan-700 text-white'
+    },
+    conversation: {
+      label: 'Conversación',
+      icon: MessageSquare,
+      className: 'bg-indigo-600 hover:bg-indigo-700 text-white'
+    },
+    other: {
+      label: 'Otro',
+      icon: AlertCircle,
+      className: 'bg-slate-600 hover:bg-slate-700 text-white'
+    }
+  };
+  
+  const config = configs[callType];
+  if (!config) return null;
+  
+  const Icon = config.icon;
+  
+  return (
+    <Badge className={`${config.className} w-fit`} data-testid={`badge-call-type-${callType}`}>
+      <Icon className="h-3 w-3 mr-1" />
+      {config.label}
+    </Badge>
+  );
 };
 
 export default function Calls() {
@@ -230,6 +299,7 @@ export default function Calls() {
                     const customerName = analysis?.customerName ?? null;
                     const calcomVerification = analysis?.calcomVerification;
                     const noAppointmentReason = analysis?.noAppointmentReason ?? null;
+                    const callType = analysis?.callType as CallType | undefined;
                     
                     return (
                       <TableRow 
@@ -249,7 +319,7 @@ export default function Calls() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-1.5">
                             {appointmentScheduled === true ? (
                               <>
                                 <Badge className="bg-green-600 hover:bg-green-700 text-white w-fit" data-testid={`badge-appointment-scheduled-${call.id}`}>
@@ -270,13 +340,26 @@ export default function Calls() {
                               </>
                             ) : appointmentScheduled === false ? (
                               <>
-                                <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
-                                  No agendada
-                                </Badge>
-                                {noAppointmentReason && (
-                                  <div className="text-xs text-muted-foreground mt-1 max-w-xs" data-testid={`text-no-appointment-reason-${call.id}`}>
-                                    {noAppointmentReason}
-                                  </div>
+                                {callType ? (
+                                  <>
+                                    {getCallTypeBadge(callType)}
+                                    {noAppointmentReason && (
+                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-xs line-clamp-2" data-testid={`text-no-appointment-reason-${call.id}`}>
+                                        {noAppointmentReason}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Badge className="bg-red-600 hover:bg-red-700 text-white w-fit" data-testid={`badge-appointment-not-scheduled-${call.id}`}>
+                                      No agendada
+                                    </Badge>
+                                    {noAppointmentReason && (
+                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-xs line-clamp-2" data-testid={`text-no-appointment-reason-${call.id}`}>
+                                        {noAppointmentReason}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </>
                             ) : (

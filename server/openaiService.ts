@@ -31,6 +31,17 @@ Please provide:
 8. **IMPORTANT**: Did the customer schedule an appointment? (true/false)
 9. If an appointment was scheduled, provide details (date, time, type of appointment)
 10. **IMPORTANT**: Extract the customer's full name (first and last name) if they provided it during the call
+11. **IMPORTANT**: Categorize the call type based on what happened:
+    - "voicemail" - Call went to voicemail/buzón de voz
+    - "no_answer" - Customer didn't answer, line was busy, or not available
+    - "not_interested" - Customer explicitly said they're not interested
+    - "call_later" - Customer asked to be called back later
+    - "disconnected" - Call was cut off, hung up early, or interrupted
+    - "wrong_number" - Wrong number or not the right person
+    - "already_scheduled" - Customer already has an appointment
+    - "needs_info" - Customer needs more information before deciding
+    - "conversation" - Had a complete conversation (use when appointment is scheduled OR had meaningful dialogue)
+    - "other" - Doesn't fit other categories
 
 Format your response as a JSON object with these fields:
 - summary (string)
@@ -42,7 +53,8 @@ Format your response as a JSON object with these fields:
 - notes (string)
 - appointmentScheduled (boolean: true if customer scheduled an appointment, false otherwise)
 - appointmentDetails (string, optional: details about the appointment if scheduled)
-- customerName (string, optional: customer's full name if provided in the call, in format "FirstName LastName")`;
+- customerName (string, optional: customer's full name if provided in the call, in format "FirstName LastName")
+- callType (string: one of the categories listed above - REQUIRED)`;
 
     try {
       const completion = await openai.chat.completions.create({
