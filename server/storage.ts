@@ -71,6 +71,8 @@ export interface IStorage {
     inProgressCalls?: number;
     startedAt?: Date;
     completedAt?: Date;
+    retellBatchId?: string;
+    batchStats?: any;
   }): Promise<void>;
   incrementCampaignInProgress(id: string): Promise<void>;
   incrementCampaignFailed(id: string): Promise<void>;
@@ -411,6 +413,8 @@ export class DatabaseStorage implements IStorage {
     inProgressCalls?: number;
     startedAt?: Date;
     completedAt?: Date;
+    retellBatchId?: string;
+    batchStats?: any;
   }): Promise<void> {
     await db
       .update(campaigns)

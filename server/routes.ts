@@ -1301,123 +1301,74 @@ export function registerRoutes(app: Express) {
         inProgressCalls: 0,
       });
 
-      // If startImmediately is true, start the campaign right away
+      // If startImmediately is true, start the campaign using Batch Calling API
       if (startImmediately) {
         const phoneNumbers = await storage.getPhoneNumbersByList(listId, true); // Exclude contacted numbers
         
         if (phoneNumbers.length === 0) {
-          return res.status(400).json({ message: "No phone numbers in list" });
+          return res.status(400).json({ message: "No phone numbers in list or all already contacted" });
         }
 
-        await storage.updateCampaignStatus(campaign.id, 'active');
-        await storage.updateCampaignStats(campaign.id, {
-          totalCalls: phoneNumbers.length,
-          startedAt: new Date(),
-        });
+        console.log(`🚀 Creating Retell batch call for campaign ${campaign.id} with ${phoneNumbers.length} numbers...`);
 
-        // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
-        console.log(`🚀 Starting campaign ${campaign.id} with ${phoneNumbers.length} calls in background...`);
-        processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
-          try {
-            const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-            const retellCall = await retellService.createPhoneCall({
-              from_number: fromNum,
-              to_number: phoneNumber.phoneNumber,
-              override_agent_id: agentId,
-              metadata: {
-                campaignId: campaign.id,
-                listId,
-                phoneNumberId: phoneNumber.id,
-              },
-            });
-
-            const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-              ? phoneNumber.phoneNumber 
-              : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-              
-            await storage.createCall({
-              id: retellCall.call_id,
+        // Prepare batch call tasks
+        const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+        const tasks = phoneNumbers.map(phoneNumber => {
+          // Ensure E.164 format
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+          
+          return {
+            to_number: toNumber,
+            override_agent_id: agentId,
+            retell_llm_dynamic_variables: {
+              campaign_id: campaign.id,
+              list_id: listId,
+              phone_number_id: phoneNumber.id,
+              customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
+            },
+            metadata: {
               userId,
               campaignId: campaign.id,
+              listId: listId,
+              phoneNumberId: phoneNumber.id,
               agentId,
-              fromNumber: fromNum,
-              toNumber: toNumber,
-              callStatus: retellCall.call_status || 'queued',
-              startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
-              endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
-              durationMs: retellCall.duration_ms || null,
-              disconnectionReason: retellCall.disconnection_reason || null,
-            });
-
-            await storage.createCallLog({
-              id: randomUUID(),
-              callId: retellCall.call_id,
-              transcript: null,
-              recordingUrl: null,
-              callSummary: null,
-              callSuccessful: null,
-              userSentiment: null,
-              inVoicemail: null,
-            });
-
-            // Atomic increment - no race conditions
-            await storage.incrementCampaignInProgress(campaign.id);
-            
-            return { callId: retellCall.call_id };
-          } catch (error) {
-            console.error("Error creating call:", error);
-            
-            // Save failed call attempt to DB so it can be retried later
-            const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-              ? phoneNumber.phoneNumber 
-              : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-            
-            try {
-              const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-              const failedCallId = randomUUID();
-              await storage.createCall({
-                id: failedCallId,
-                userId,
-                campaignId: campaign.id,
-                agentId,
-                fromNumber: fromNum,
-                toNumber: toNumber,
-                callStatus: 'failed',
-                startTimestamp: null,
-                endTimestamp: null,
-                durationMs: null,
-                disconnectionReason: 'error',
-                canRetry: true, // Mark as retriable
-              });
-
-              await storage.createCallLog({
-                id: randomUUID(),
-                callId: failedCallId,
-                transcript: null,
-                recordingUrl: null,
-                callSummary: null,
-                callSuccessful: null,
-                userSentiment: null,
-                inVoicemail: null,
-              });
-            } catch (dbError) {
-              console.error("Error saving failed call to DB:", dbError);
-            }
-            
-            // Atomic increment - no race conditions
-            await storage.incrementCampaignFailed(campaign.id);
-            
-            return null;
-          }
-        }, campaign.id, userId).catch(async (error) => {
-          console.error(`❌ Fatal error in campaign ${campaign.id} background processing:`, error);
-          // Mark campaign as failed
-          try {
-            await storage.updateCampaignStatus(campaign.id, 'failed');
-          } catch (updateError) {
-            console.error('Failed to update campaign status:', updateError);
-          }
+            },
+          };
         });
+
+        try {
+          // Create batch call via Retell API
+          const batchCall = await retellService.createBatchCall({
+            from_number: fromNum,
+            tasks,
+            name: campaignName,
+          });
+
+          console.log(`✅ Batch call created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+
+          // Update campaign with batch info
+          // NOTE: We don't create Call records here - Retell webhooks will create them with real call_id
+          await storage.updateCampaignStatus(campaign.id, 'active');
+          await storage.updateCampaignStats(campaign.id, {
+            totalCalls: phoneNumbers.length,
+            startedAt: new Date(),
+            retellBatchId: batchCall.batch_call_id,
+            batchStats: {
+              batch_call_id: batchCall.batch_call_id,
+              total_task_count: batchCall.total_task_count,
+              scheduled_timestamp: batchCall.scheduled_timestamp,
+              phone_numbers: phoneNumbers.map(p => p.id), // Track which numbers are in this batch
+            },
+          });
+
+          console.log(`✅ Campaign ${campaign.id} started with Retell Batch Calling. Webhooks will populate call records.`);
+        } catch (batchError: any) {
+          console.error(`❌ Failed to create batch call:`, batchError);
+          await storage.updateCampaignStatus(campaign.id, 'failed');
+          return res.status(500).json({ message: `Failed to start batch call: ${batchError.message}` });
+        }
       }
       
       res.status(201).json(campaign);
@@ -1437,131 +1388,100 @@ export function registerRoutes(app: Express) {
         return res.status(404).json({ message: "Campaign not found" });
       }
 
+      if (campaign.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      if (campaign.status !== 'draft' && campaign.status !== 'paused') {
+        return res.status(400).json({ message: "Campaign must be in draft or paused status to start" });
+      }
+
+      // Prevent duplicate batch creation
+      if (campaign.retellBatchId) {
+        return res.status(400).json({ 
+          message: "Campaign already has an active batch call. Use pause/resume or create a new campaign.",
+          batchId: campaign.retellBatchId 
+        });
+      }
+
       // Get phone numbers from the list (exclude already contacted)
       const phoneNumbers = await storage.getPhoneNumbersByList(campaign.listId, true);
       
       if (phoneNumbers.length === 0) {
-        return res.status(400).json({ message: "No phone numbers in list" });
+        return res.status(400).json({ message: "No phone numbers in list or all already contacted" });
       }
 
-      // Update campaign status
-      await storage.updateCampaignStatus(id, 'active');
-      await storage.updateCampaignStats(id, {
-        totalCalls: phoneNumbers.length,
-        startedAt: new Date(),
-      });
+      console.log(`🚀 Creating Retell batch call for campaign ${id} with ${phoneNumbers.length} numbers...`);
 
-      // Start making calls ASYNCHRONOUSLY (don't await - let it run in background)
-      console.log(`🚀 Starting campaign ${id} with ${phoneNumbers.length} calls in background...`);
-      processConcurrently(phoneNumbers, 20, async (phoneNumber): Promise<{ callId: string } | null> => {
-        try {
-          // Create call in Retell AI
-          const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-          const retellCall = await retellService.createPhoneCall({
-            from_number: fromNum,
-            to_number: phoneNumber.phoneNumber,
-            override_agent_id: campaign.agentId,
-            metadata: {
-              campaignId: id,
-              listId: campaign.listId,
-              phoneNumberId: phoneNumber.id,
-            },
-          });
-
-          // Store call in our database  
-          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-            ? phoneNumber.phoneNumber 
-            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-            
-          await storage.createCall({
-            id: retellCall.call_id,
+      // Prepare batch call tasks
+      const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
+      const tasks = phoneNumbers.map(phoneNumber => {
+        // Ensure E.164 format
+        const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+          ? phoneNumber.phoneNumber 
+          : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+        
+        return {
+          to_number: toNumber,
+          override_agent_id: campaign.agentId,
+          retell_llm_dynamic_variables: {
+            campaign_id: id,
+            list_id: campaign.listId,
+            phone_number_id: phoneNumber.id,
+            customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
+          },
+          metadata: {
             userId,
             campaignId: id,
+            listId: campaign.listId,
+            phoneNumberId: phoneNumber.id,
             agentId: campaign.agentId,
-            fromNumber: fromNum,
-            toNumber: toNumber,
-            callStatus: retellCall.call_status || 'queued',
-            startTimestamp: retellCall.start_timestamp ? new Date(retellCall.start_timestamp) : null,
-            endTimestamp: retellCall.end_timestamp ? new Date(retellCall.end_timestamp) : null,
-            durationMs: retellCall.duration_ms || null,
-            disconnectionReason: retellCall.disconnection_reason || null,
-          });
-
-          // Create call log
-          await storage.createCallLog({
-            id: randomUUID(),
-            callId: retellCall.call_id,
-            transcript: null,
-            recordingUrl: null,
-            callSummary: null,
-            callSuccessful: null,
-            userSentiment: null,
-            inVoicemail: null,
-          });
-          
-          return { callId: retellCall.call_id };
-        } catch (error) {
-          console.error("Error creating call:", error);
-          
-          // Save failed call attempt to DB so it can be retried later
-          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-            ? phoneNumber.phoneNumber 
-            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-          
-          try {
-            const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-            const failedCallId = randomUUID();
-            await storage.createCall({
-              id: failedCallId,
-              userId,
-              campaignId: id,
-              agentId: campaign.agentId,
-              fromNumber: fromNum,
-              toNumber: toNumber,
-              callStatus: 'failed',
-              startTimestamp: null,
-              endTimestamp: null,
-              durationMs: null,
-              disconnectionReason: 'error',
-              canRetry: true,
-            });
-
-            await storage.createCallLog({
-              id: randomUUID(),
-              callId: failedCallId,
-              transcript: null,
-              recordingUrl: null,
-              callSummary: null,
-              callSuccessful: null,
-              userSentiment: null,
-              inVoicemail: null,
-            });
-          } catch (dbError) {
-            console.error("Error saving failed call to DB:", dbError);
-          }
-          
-          await storage.incrementCampaignFailed(id);
-          
-          return null;
-        }
-      }, id, userId).catch(async (error) => {
-        console.error(`❌ Fatal error in campaign ${id} background processing:`, error);
-        // Mark campaign as failed
-        try {
-          await storage.updateCampaignStatus(id, 'failed');
-        } catch (updateError) {
-          console.error('Failed to update campaign status:', updateError);
-        }
+          },
+        };
       });
 
-      res.json({ message: "Campaign started successfully" });
+      try {
+        // Create batch call via Retell API
+        const batchCall = await retellService.createBatchCall({
+          from_number: fromNum,
+          tasks,
+          name: campaign.name,
+        });
+
+        console.log(`✅ Batch call created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+
+        // Update campaign with batch info
+        // NOTE: We don't create Call records here - Retell webhooks will create them with real call_id
+        await storage.updateCampaignStatus(id, 'active');
+        await storage.updateCampaignStats(id, {
+          totalCalls: phoneNumbers.length,
+          startedAt: new Date(),
+          retellBatchId: batchCall.batch_call_id,
+          batchStats: {
+            batch_call_id: batchCall.batch_call_id,
+            total_task_count: batchCall.total_task_count,
+            scheduled_timestamp: batchCall.scheduled_timestamp,
+            phone_numbers: phoneNumbers.map(p => p.id), // Track which numbers are in this batch
+          },
+        });
+
+        console.log(`✅ Campaign ${id} started with Retell Batch Calling. Webhooks will populate call records.`);
+        
+        const updatedCampaign = await storage.getCampaign(id);
+        res.json({ message: "Campaign started successfully", campaign: updatedCampaign });
+      } catch (batchError: any) {
+        console.error(`❌ Failed to create batch call:`, batchError);
+        await storage.updateCampaignStatus(id, 'failed');
+        return res.status(500).json({ message: `Failed to start batch call: ${batchError.message}` });
+      }
     } catch (error: any) {
       console.error("Error starting campaign:", error);
       res.status(500).json({ message: error.message });
     }
   });
 
-  // Pause a campaign (stops creating new calls, but lets active calls finish)
+  // Pause a campaign
+  // NOTE: With Retell Batch Calling API, pause is not currently supported
   app.post("/api/campaigns/:id/pause", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -1576,17 +1496,16 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      if (campaign.status !== 'active') {
-        return res.status(400).json({ message: "Campaign is not active" });
+      if (campaign.retellBatchId) {
+        // This is a batch campaign, pause not supported yet
+        return res.status(501).json({ 
+          message: "Pause is not available for batch campaigns. Retell AI will complete all scheduled calls automatically.",
+          note: "To prevent future campaigns, delete the campaign or create a new one. Active batch calls will complete."
+        });
       }
 
-      // Add to paused campaigns set
-      pausedCampaigns.add(id);
-      await storage.updateCampaignStatus(id, 'paused');
-      
-      console.log(`⏸️ Campaign ${id} paused`);
-      const updatedCampaign = await storage.getCampaign(id);
-      res.json(updatedCampaign);
+      // Legacy campaign (non-batch) - should not exist but handle gracefully
+      return res.status(400).json({ message: "Campaign type not supported" });
     } catch (error: any) {
       console.error("Error pausing campaign:", error);
       res.status(500).json({ message: error.message });
@@ -1594,6 +1513,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Resume a paused campaign
+  // NOTE: With Batch Calling API, resume is not currently supported
   app.post("/api/campaigns/:id/resume", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -1608,17 +1528,16 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      if (campaign.status !== 'paused') {
-        return res.status(400).json({ message: "Campaign is not paused" });
+      if (campaign.retellBatchId) {
+        // This is a batch campaign, resume not applicable
+        return res.status(501).json({ 
+          message: "Resume is not needed for batch campaigns. Retell AI handles call scheduling automatically.",
+          note: "Batch calls run continuously until all numbers are called."
+        });
       }
 
-      // Remove from paused campaigns set
-      pausedCampaigns.delete(id);
-      await storage.updateCampaignStatus(id, 'active');
-      
-      console.log(`▶️ Campaign ${id} resumed`);
-      const updatedCampaign = await storage.getCampaign(id);
-      res.json(updatedCampaign);
+      // Legacy campaign (non-batch) - should not exist but handle gracefully
+      return res.status(400).json({ message: "Campaign type not supported" });
     } catch (error: any) {
       console.error("Error resuming campaign:", error);
       res.status(500).json({ message: error.message });
@@ -1626,6 +1545,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Stop/cancel a campaign completely
+  // NOTE: Batch Calling API doesn't support cancel yet
   app.post("/api/campaigns/:id/stop", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
@@ -1640,16 +1560,17 @@ export function registerRoutes(app: Express) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      if (campaign.status !== 'active' && campaign.status !== 'paused') {
-        return res.status(400).json({ message: "Campaign is not active or paused" });
+      if (campaign.retellBatchId) {
+        // This is a batch campaign, cancel not supported yet
+        return res.status(501).json({ 
+          message: "Cancel is not currently available for batch campaigns. The batch call will complete automatically.",
+          note: "All scheduled calls will be attempted. You can delete the campaign record for tracking purposes, but calls will continue.",
+          batchId: campaign.retellBatchId
+        });
       }
 
-      // Remove from paused set if it was paused
-      pausedCampaigns.delete(id);
-      await storage.stopCampaign(id);
-
-      const updatedCampaign = await storage.getCampaign(id);
-      res.json(updatedCampaign);
+      // Legacy campaign (non-batch) - should not exist but handle gracefully
+      return res.status(400).json({ message: "Campaign type not supported" });
     } catch (error: any) {
       console.error("Error stopping campaign:", error);
       res.status(500).json({ message: error.message });
@@ -2513,11 +2434,52 @@ export function registerRoutes(app: Express) {
       switch (event.event) {
         case 'call_started':
           if (event.call) {
-            await storage.updateCallStatus(
-              event.call.call_id,
-              'in_progress',
-              event.call.start_timestamp ? new Date(event.call.start_timestamp) : undefined
-            );
+            // Check if call record exists
+            let call = await storage.getCall(event.call.call_id);
+            
+            if (!call && event.call.metadata) {
+              // Create call record from webhook metadata (batch call case)
+              const metadata = event.call.metadata;
+              await storage.createCall({
+                id: event.call.call_id,
+                userId: metadata.userId,
+                campaignId: metadata.campaignId,
+                agentId: metadata.agentId,
+                fromNumber: event.call.from_number || '',
+                toNumber: event.call.to_number || '',
+                callStatus: 'in_progress',
+                startTimestamp: event.call.start_timestamp ? new Date(event.call.start_timestamp) : null,
+                endTimestamp: null,
+                durationMs: null,
+                disconnectionReason: null,
+                metadata: {
+                  listId: metadata.listId,
+                  phoneNumberId: metadata.phoneNumberId,
+                  isBatchCall: true,
+                },
+              });
+              
+              // Also create call log record
+              await storage.createCallLog({
+                id: randomUUID(),
+                callId: event.call.call_id,
+                transcript: null,
+                recordingUrl: null,
+                callSummary: null,
+                callSuccessful: null,
+                userSentiment: null,
+                inVoicemail: null,
+              });
+              
+              console.log(`📝 Created call record from webhook for batch call ${event.call.call_id}`);
+            } else {
+              // Update existing call
+              await storage.updateCallStatus(
+                event.call.call_id,
+                'in_progress',
+                event.call.start_timestamp ? new Date(event.call.start_timestamp) : undefined
+              );
+            }
           }
           break;
 
