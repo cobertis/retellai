@@ -53,6 +53,7 @@ export interface IStorage {
   // Phone Number operations
   createPhoneNumbers(numbers: InsertPhoneNumber[]): Promise<void>;
   createPhoneNumber(number: InsertPhoneNumber): Promise<PhoneNumber>;
+  createPhoneNumbersBatch(numbers: InsertPhoneNumber[]): Promise<void>;
   getPhoneNumber(id: string): Promise<PhoneNumber | undefined>;
   getPhoneNumbersByList(listId: string, excludeContacted?: boolean): Promise<PhoneNumber[]>;
   updatePhoneNumber(id: string, data: Partial<Omit<InsertPhoneNumber, 'listId'>>): Promise<PhoneNumber | undefined>;
@@ -317,6 +318,18 @@ export class DatabaseStorage implements IStorage {
       .values(number)
       .returning();
     return phoneNumber;
+  }
+
+  async createPhoneNumbersBatch(numbers: InsertPhoneNumber[]): Promise<void> {
+    if (numbers.length === 0) return;
+
+    // Insert in chunks of 500 to avoid query size limits
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < numbers.length; i += BATCH_SIZE) {
+      const batch = numbers.slice(i, i + BATCH_SIZE);
+      await db.insert(phoneNumbers).values(batch);
+      console.log(`📝 Batch inserted ${Math.min(i + BATCH_SIZE, numbers.length)}/${numbers.length} phone numbers`);
+    }
   }
 
   async getPhoneNumber(id: string): Promise<PhoneNumber | undefined> {

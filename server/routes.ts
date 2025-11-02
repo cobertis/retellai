@@ -1088,23 +1088,20 @@ export function registerRoutes(app: Express) {
         totalNumbers: contacts.length,
       });
 
-      // Save all contacts to the list with +1 prefix
-      console.log(`💾 Saving ${contacts.length} contacts to database...`);
-      for (const contact of contacts) {
-        const normalizedPhone = contact.phone.startsWith('+') 
-          ? contact.phone 
-          : `+1${contact.phone}`;
-        
-        await storage.createPhoneNumber({
-          listId: phoneList.id,
-          phoneNumber: normalizedPhone,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          email: contact.email,
-        });
-      }
+      // Save all contacts to the list with +1 prefix using batch insert
+      console.log(`💾 Saving ${contacts.length} contacts to database using batch insert...`);
+      
+      const phoneNumbersToInsert = contacts.map(contact => ({
+        listId: phoneList.id,
+        phoneNumber: contact.phone.startsWith('+') ? contact.phone : `+1${contact.phone}`,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        email: contact.email,
+      }));
+      
+      await storage.createPhoneNumbersBatch(phoneNumbersToInsert);
 
-      console.log(`✅ Saved ${contacts.length} contacts. List ID: ${phoneList.id}`);
+      console.log(`✅ Saved ${contacts.length} contacts in batches. List ID: ${phoneList.id}`);
 
       res.json({
         success: true,
