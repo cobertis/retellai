@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Upload, List, Trash2, Loader2, FileText, Eye, Sparkles, X, Check, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ export default function PhoneLists() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [skipClassification, setSkipClassification] = useState(false);
   
   // Two-step process states
   const [currentStep, setCurrentStep] = useState<'upload' | 'classify' | 'complete'>('upload');
@@ -56,9 +58,10 @@ export default function PhoneLists() {
 
   // STEP 1: Upload CSV and save numbers
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, skipClassification }: { file: File; skipClassification: boolean }) => {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('skipClassification', skipClassification.toString());
       
       const response = await fetch('/api/process-leads', {
         method: 'POST',
@@ -72,17 +75,27 @@ export default function PhoneLists() {
       
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/phone-lists"] });
-      setUploadedListId(data.listId);
-      setUploadedListName(data.listName);
-      setTotalContacts(data.totalContacts);
-      setCurrentStep('classify');
       
-      toast({
-        title: "✅ Paso 1 Completado",
-        description: `${data.totalContacts} contactos guardados. Ahora puedes clasificar con IA.`,
-      });
+      if (variables.skipClassification) {
+        // If skipping classification, go straight to complete
+        setCurrentStep('complete');
+        toast({
+          title: "✅ Lista Subida",
+          description: `${data.totalContacts} contactos guardados. Lista lista para usar.`,
+        });
+      } else {
+        // Otherwise go to classify step
+        setUploadedListId(data.listId);
+        setUploadedListName(data.listName);
+        setTotalContacts(data.totalContacts);
+        setCurrentStep('classify');
+        toast({
+          title: "✅ Paso 1 Completado",
+          description: `${data.totalContacts} contactos guardados. Ahora puedes clasificar con IA.`,
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -177,7 +190,7 @@ export default function PhoneLists() {
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-    await uploadMutation.mutateAsync(selectedFile);
+    await uploadMutation.mutateAsync({ file: selectedFile, skipClassification });
   };
 
   const handleClassify = async () => {
@@ -188,6 +201,7 @@ export default function PhoneLists() {
   const handleReset = () => {
     setCurrentStep('upload');
     setSelectedFile(null);
+    setSkipClassification(false);
     setUploadedListId(null);
     setUploadedListName('');
     setTotalContacts(0);
@@ -414,6 +428,21 @@ export default function PhoneLists() {
                   </div>
                 )}
 
+                <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+                  <Checkbox 
+                    id="skip-classification" 
+                    checked={skipClassification}
+                    onCheckedChange={(checked) => setSkipClassification(checked as boolean)}
+                    data-testid="checkbox-skip-classification"
+                  />
+                  <Label 
+                    htmlFor="skip-classification" 
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    Lista lista para usar (sin clasificación AI)
+                  </Label>
+                </div>
+
                 <Button
                   onClick={handleUpload}
                   disabled={!selectedFile || uploadMutation.isPending}
@@ -429,7 +458,7 @@ export default function PhoneLists() {
                   ) : (
                     <>
                       <Upload className="mr-2 h-4 w-4" />
-                      Subir y Guardar
+                      {skipClassification ? 'Subir Lista' : 'Subir y Guardar'}
                     </>
                   )}
                 </Button>

@@ -1008,12 +1008,16 @@ export function registerRoutes(app: Express) {
     try {
       const userId = getUserId(req);
       const file = req.file;
+      const skipClassification = req.body.skipClassification === 'true';
 
       if (!file) {
         return res.status(400).send("No file uploaded");
       }
 
       console.log("📤 Uploading leads file:", file.originalname);
+      if (skipClassification) {
+        console.log("⚡ Skip classification enabled - list will be ready to use immediately");
+      }
 
       // Parse CSV
       const contacts: Array<{
@@ -1082,14 +1086,16 @@ export function registerRoutes(app: Express) {
         return res.status(400).send("No valid contacts found in CSV");
       }
 
-      // Create a single list with all contacts (will be classified later)
+      // Create a single list with all contacts
       const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       
       const phoneList = await storage.createPhoneList(userId, {
         name: `${file.originalname.replace('.csv', '')} - ${today}`,
-        description: `Uploaded from ${file.originalname} - Ready for AI classification`,
+        description: skipClassification 
+          ? `Uploaded from ${file.originalname} - Ready to use`
+          : `Uploaded from ${file.originalname} - Ready for AI classification`,
         classification: null,
-        tags: ['Pending-Classification'],
+        tags: skipClassification ? ['Ready'] : ['Pending-Classification'],
         totalNumbers: contacts.length,
       });
 
