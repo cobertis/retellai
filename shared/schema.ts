@@ -164,14 +164,23 @@ export const campaigns = pgTable("campaigns", {
   listId: varchar("list_id").notNull().references(() => phoneLists.id, { onDelete: 'cascade' }),
   fromNumber: varchar("from_number"),
   status: varchar("status").notNull().default("draft"),
+  
+  // Retell Batch Calling fields
+  retellBatchId: varchar("retell_batch_id"),
+  batchStats: jsonb("batch_stats"),
+  
+  // Local tracking fields (still useful)
   totalCalls: integer("total_calls").default(0),
   completedCalls: integer("completed_calls").default(0),
   failedCalls: integer("failed_calls").default(0),
   inProgressCalls: integer("in_progress_calls").default(0),
+  
+  // DEPRECATED: No longer needed with Batch Calling API
   concurrencyLimit: integer("concurrency_limit").default(20),
   currentBatch: integer("current_batch").default(0),
   totalBatches: integer("total_batches").default(0),
   isRunning: boolean("is_running").default(false),
+  
   scheduledAt: timestamp("scheduled_at"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),

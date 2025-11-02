@@ -29,6 +29,27 @@ export interface CreatePhoneCallParams {
   retell_llm_dynamic_variables?: Record<string, any>;
 }
 
+export interface BatchCallTask {
+  to_number: string;
+  override_agent_id?: string;
+  retell_llm_dynamic_variables?: Record<string, any>;
+}
+
+export interface CreateBatchCallParams {
+  from_number: string;
+  tasks: BatchCallTask[];
+  name?: string;
+  trigger_timestamp?: number;
+}
+
+export interface BatchCallResponse {
+  batch_call_id: string;
+  name: string;
+  from_number: string;
+  scheduled_timestamp: number;
+  total_task_count: number;
+}
+
 export class RetellService {
   async createAgent(params: CreateAgentParams) {
     try {
@@ -112,6 +133,17 @@ export class RetellService {
     } catch (error: any) {
       console.error('Error listing Retell calls:', error);
       throw new Error(error.message || 'Failed to list calls');
+    }
+  }
+
+  // Batch Calling Methods
+  async createBatchCall(params: CreateBatchCallParams): Promise<BatchCallResponse> {
+    try {
+      const batchCall = await retellClient.batchCall.createBatchCall(params as any);
+      return batchCall;
+    } catch (error: any) {
+      console.error('Error creating Retell batch call:', error);
+      throw new Error(error.message || 'Failed to create batch call');
     }
   }
 }
