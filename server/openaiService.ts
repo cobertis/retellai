@@ -43,6 +43,11 @@ Please provide:
     - "conversation" - Had a complete conversation (use when appointment is scheduled OR had meaningful dialogue)
     - "other" - Doesn't fit other categories
 
+12. **CRITICAL**: Did a real human answer and interact with the agent? (hadRealInteraction)
+    - TRUE: Customer answered the phone AND spoke with the agent (even if brief, negative, or hung up mid-conversation)
+    - FALSE: Voicemail, no answer, line busy, or no human interaction at all
+    - This is independent of whether they scheduled an appointment - we just want to know if a REAL PERSON answered
+
 Format your response as a JSON object with these fields:
 - summary (string)
 - sentiment (string: "positive", "neutral", or "negative")
@@ -54,7 +59,8 @@ Format your response as a JSON object with these fields:
 - appointmentScheduled (boolean: true if customer scheduled an appointment, false otherwise)
 - appointmentDetails (string, optional: details about the appointment if scheduled)
 - customerName (string, optional: customer's full name if provided in the call, in format "FirstName LastName")
-- callType (string: one of the categories listed above - REQUIRED)`;
+- callType (string: one of the categories listed above - REQUIRED)
+- hadRealInteraction (boolean: true if a real human answered and spoke, false if voicemail/no answer/no human - REQUIRED)`;
 
     try {
       const completion = await openai.chat.completions.create({

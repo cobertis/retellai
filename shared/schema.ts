@@ -41,6 +41,7 @@ export interface CallAnalysisResult {
   customerName?: string;
   noAppointmentReason?: string;
   callType?: CallType;
+  hadRealInteraction?: boolean; // True if customer actually answered and spoke with agent
   calcomVerification?: {
     verified: boolean;
     bookingId?: number;

@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Search, ExternalLink, Clock, TrendingUp, RefreshCw, Voicemail, PhoneOff, XCircle, Timer, PhoneMissed, Info, MessageSquare, AlertCircle } from "lucide-react";
+import { Phone, Search, ExternalLink, Clock, TrendingUp, RefreshCw, Voicemail, PhoneOff, XCircle, Timer, PhoneMissed, Info, MessageSquare, AlertCircle, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import type { Call, CallType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -182,6 +182,7 @@ export default function Calls() {
     if (statusFilter !== "all") {
       const analysis = call.aiAnalysis as any;
       const appointmentScheduled = analysis?.appointmentScheduled ?? null;
+      const hadRealInteraction = analysis?.hadRealInteraction ?? null;
       
       switch (statusFilter) {
         case "in_progress":
@@ -192,6 +193,9 @@ export default function Calls() {
           break;
         case "appointments":
           matchesStatus = appointmentScheduled === true;
+          break;
+        case "real_contact":
+          matchesStatus = hadRealInteraction === true;
           break;
         case "no_answer":
           matchesStatus = call.disconnectionReason === 'dial_no_answer';
@@ -241,6 +245,7 @@ export default function Calls() {
             <SelectItem value="all">All Calls</SelectItem>
             <SelectItem value="in_progress">In Progress</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="real_contact">✅ Contacto Real (Respondieron)</SelectItem>
             <SelectItem value="appointments">Appointments Scheduled</SelectItem>
             <SelectItem value="no_answer">No Answer</SelectItem>
             <SelectItem value="hung_up">Hung Up</SelectItem>
@@ -300,6 +305,7 @@ export default function Calls() {
                     const calcomVerification = analysis?.calcomVerification;
                     const noAppointmentReason = analysis?.noAppointmentReason ?? null;
                     const callType = analysis?.callType as CallType | undefined;
+                    const hadRealInteraction = analysis?.hadRealInteraction ?? null;
                     
                     return (
                       <TableRow 
@@ -314,9 +320,17 @@ export default function Calls() {
                           {customerName || <span className="text-sm text-muted-foreground">-</span>}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getStatusColor(call.callStatus)}>
-                            {call.callStatus}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant={getStatusColor(call.callStatus)}>
+                              {call.callStatus}
+                            </Badge>
+                            {hadRealInteraction === true && (
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white w-fit text-xs" data-testid={`badge-real-interaction-${call.id}`}>
+                                <UserCheck className="h-3 w-3 mr-1" />
+                                Contacto Real
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1.5">
