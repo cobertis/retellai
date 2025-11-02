@@ -163,28 +163,33 @@ async function classifyListAsync(
     progress.hispanicListName = hispanicList.name;
     progress.nonHispanicListName = nonHispanicList.name;
 
-    console.log(`💾 Saving to new lists...`);
+    console.log(`💾 Saving ${hispanicContacts.length} Hispanic + ${nonHispanicContacts.length} Non-Hispanic contacts using batch insert...`);
 
-    // Add contacts to respective lists
-    for (const contact of hispanicContacts) {
-      await storage.createPhoneNumber({
-        listId: hispanicList.id,
-        phoneNumber: contact.phone,
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-        email: contact.email,
-      });
-    }
+    // Use batch insert for MUCH faster performance
+    const hispanicBatch = hispanicContacts.map(contact => ({
+      listId: hispanicList.id,
+      phoneNumber: contact.phone,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+    }));
 
-    for (const contact of nonHispanicContacts) {
-      await storage.createPhoneNumber({
-        listId: nonHispanicList.id,
-        phoneNumber: contact.phone,
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-        email: contact.email,
-      });
-    }
+    const nonHispanicBatch = nonHispanicContacts.map(contact => ({
+      listId: nonHispanicList.id,
+      phoneNumber: contact.phone,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+    }));
+
+    // Batch insert both lists in parallel
+    console.log(`📊 Inserting Hispanic list (${hispanicBatch.length} contacts)...`);
+    await storage.createPhoneNumbersBatch(hispanicBatch);
+    console.log(`✅ Hispanic list saved`);
+    
+    console.log(`📊 Inserting Non-Hispanic list (${nonHispanicBatch.length} contacts)...`);
+    await storage.createPhoneNumbersBatch(nonHispanicBatch);
+    console.log(`✅ Non-Hispanic list saved`)
 
     // Mark original list as classified (update tags)
     await storage.updatePhoneListDetails(listId, {
