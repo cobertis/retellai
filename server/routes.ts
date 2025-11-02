@@ -1317,61 +1317,83 @@ export function registerRoutes(app: Express) {
           return res.status(400).json({ message: "No phone numbers in list or all already contacted" });
         }
 
-        console.log(`🚀 Creating Retell batch call for campaign ${campaign.id} with ${phoneNumbers.length} numbers...`);
+        console.log(`🚀 Creating Retell batch calls for campaign ${campaign.id} with ${phoneNumbers.length} numbers...`);
 
         // Prepare batch call tasks
         const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-        const tasks = phoneNumbers.map(phoneNumber => {
-          // Ensure E.164 format
-          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-            ? phoneNumber.phoneNumber 
-            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-          
-          return {
-            to_number: toNumber,
-            override_agent_id: agentId,
-            retell_llm_dynamic_variables: {
-              campaign_id: campaign.id,
-              list_id: listId,
-              phone_number_id: phoneNumber.id,
-              customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
-            },
-            metadata: {
-              userId,
-              campaignId: campaign.id,
-              listId: listId,
-              phoneNumberId: phoneNumber.id,
-              agentId,
-            },
-          };
-        });
+        
+        // CRITICAL: Split into chunks of 1000 to avoid 413 "Request Entity Too Large" error
+        const CHUNK_SIZE = 1000;
+        const chunks: any[][] = [];
+        for (let i = 0; i < phoneNumbers.length; i += CHUNK_SIZE) {
+          const chunk = phoneNumbers.slice(i, i + CHUNK_SIZE);
+          const tasks = chunk.map(phoneNumber => {
+            // Ensure E.164 format
+            const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+              ? phoneNumber.phoneNumber 
+              : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+            
+            return {
+              to_number: toNumber,
+              override_agent_id: agentId,
+              retell_llm_dynamic_variables: {
+                campaign_id: campaign.id,
+                list_id: listId,
+                phone_number_id: phoneNumber.id,
+                customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
+              },
+              metadata: {
+                userId,
+                campaignId: campaign.id,
+                listId: listId,
+                phoneNumberId: phoneNumber.id,
+                agentId,
+              },
+            };
+          });
+          chunks.push(tasks);
+        }
+
+        console.log(`📦 Split into ${chunks.length} batch(es) of max ${CHUNK_SIZE} numbers each`);
 
         try {
-          // Create batch call via Retell API
-          const batchCall = await retellService.createBatchCall({
-            from_number: fromNum,
-            tasks,
-            name: campaignName,
-          });
+          // Create multiple batch calls
+          const batchCallIds: string[] = [];
+          let totalTaskCount = 0;
 
-          console.log(`✅ Batch call created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+          for (let i = 0; i < chunks.length; i++) {
+            const tasks = chunks[i];
+            const batchName = chunks.length > 1 ? `${campaignName} (${i + 1}/${chunks.length})` : campaignName;
+            
+            console.log(`📤 Creating batch ${i + 1}/${chunks.length} with ${tasks.length} tasks...`);
+            
+            const batchCall = await retellService.createBatchCall({
+              from_number: fromNum,
+              tasks,
+              name: batchName,
+            });
 
-          // Update campaign with batch info
-          // NOTE: We don't create Call records here - Retell webhooks will create them with real call_id
+            batchCallIds.push(batchCall.batch_call_id);
+            totalTaskCount += batchCall.total_task_count;
+            
+            console.log(`✅ Batch ${i + 1}/${chunks.length} created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+          }
+
+          // Update campaign with batch info (store first batch ID for backwards compatibility)
           await storage.updateCampaignStatus(campaign.id, 'active');
           await storage.updateCampaignStats(campaign.id, {
             totalCalls: phoneNumbers.length,
             startedAt: new Date(),
-            retellBatchId: batchCall.batch_call_id,
+            retellBatchId: batchCallIds[0], // Store first batch ID for backwards compatibility
             batchStats: {
-              batch_call_id: batchCall.batch_call_id,
-              total_task_count: batchCall.total_task_count,
-              scheduled_timestamp: batchCall.scheduled_timestamp,
-              phone_numbers: phoneNumbers.map(p => p.id), // Track which numbers are in this batch
+              batch_call_ids: batchCallIds, // Store all batch IDs
+              total_batches: chunks.length,
+              total_task_count: totalTaskCount,
+              phone_numbers: phoneNumbers.map(p => p.id),
             },
           });
 
-          console.log(`✅ Campaign ${campaign.id} started with Retell Batch Calling. Webhooks will populate call records.`);
+          console.log(`✅ Campaign ${campaign.id} started with ${chunks.length} Retell batch call(s). Webhooks will populate call records.`);
         } catch (batchError: any) {
           console.error(`❌ Failed to create batch call:`, batchError);
           await storage.updateCampaignStatus(campaign.id, 'failed');
@@ -1419,61 +1441,83 @@ export function registerRoutes(app: Express) {
         return res.status(400).json({ message: "No phone numbers in list or all already contacted" });
       }
 
-      console.log(`🚀 Creating Retell batch call for campaign ${id} with ${phoneNumbers.length} numbers...`);
+      console.log(`🚀 Creating Retell batch calls for campaign ${id} with ${phoneNumbers.length} numbers...`);
 
       // Prepare batch call tasks
       const fromNum = campaign.fromNumber || process.env.DEFAULT_FROM_NUMBER || '+18046689791';
-      const tasks = phoneNumbers.map(phoneNumber => {
-        // Ensure E.164 format
-        const toNumber = phoneNumber.phoneNumber.startsWith('+') 
-          ? phoneNumber.phoneNumber 
-          : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
-        
-        return {
-          to_number: toNumber,
-          override_agent_id: campaign.agentId,
-          retell_llm_dynamic_variables: {
-            campaign_id: id,
-            list_id: campaign.listId,
-            phone_number_id: phoneNumber.id,
-            customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
-          },
-          metadata: {
-            userId,
-            campaignId: id,
-            listId: campaign.listId,
-            phoneNumberId: phoneNumber.id,
-            agentId: campaign.agentId,
-          },
-        };
-      });
+      
+      // CRITICAL: Split into chunks of 1000 to avoid 413 "Request Entity Too Large" error
+      const CHUNK_SIZE = 1000;
+      const chunks: any[][] = [];
+      for (let i = 0; i < phoneNumbers.length; i += CHUNK_SIZE) {
+        const chunk = phoneNumbers.slice(i, i + CHUNK_SIZE);
+        const tasks = chunk.map(phoneNumber => {
+          // Ensure E.164 format
+          const toNumber = phoneNumber.phoneNumber.startsWith('+') 
+            ? phoneNumber.phoneNumber 
+            : `+1${phoneNumber.phoneNumber.replace(/[^0-9]/g, '')}`;
+          
+          return {
+            to_number: toNumber,
+            override_agent_id: campaign.agentId,
+            retell_llm_dynamic_variables: {
+              campaign_id: id,
+              list_id: campaign.listId,
+              phone_number_id: phoneNumber.id,
+              customer_name: phoneNumber.firstName ? `${phoneNumber.firstName} ${phoneNumber.lastName || ''}`.trim() : undefined,
+            },
+            metadata: {
+              userId,
+              campaignId: id,
+              listId: campaign.listId,
+              phoneNumberId: phoneNumber.id,
+              agentId: campaign.agentId,
+            },
+          };
+        });
+        chunks.push(tasks);
+      }
+
+      console.log(`📦 Split into ${chunks.length} batch(es) of max ${CHUNK_SIZE} numbers each`);
 
       try {
-        // Create batch call via Retell API
-        const batchCall = await retellService.createBatchCall({
-          from_number: fromNum,
-          tasks,
-          name: campaign.name,
-        });
+        // Create multiple batch calls
+        const batchCallIds: string[] = [];
+        let totalTaskCount = 0;
 
-        console.log(`✅ Batch call created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+        for (let i = 0; i < chunks.length; i++) {
+          const tasks = chunks[i];
+          const batchName = chunks.length > 1 ? `${campaign.name} (${i + 1}/${chunks.length})` : campaign.name;
+          
+          console.log(`📤 Creating batch ${i + 1}/${chunks.length} with ${tasks.length} tasks...`);
+          
+          const batchCall = await retellService.createBatchCall({
+            from_number: fromNum,
+            tasks,
+            name: batchName,
+          });
 
-        // Update campaign with batch info
-        // NOTE: We don't create Call records here - Retell webhooks will create them with real call_id
+          batchCallIds.push(batchCall.batch_call_id);
+          totalTaskCount += batchCall.total_task_count;
+          
+          console.log(`✅ Batch ${i + 1}/${chunks.length} created: ${batchCall.batch_call_id} with ${batchCall.total_task_count} tasks`);
+        }
+
+        // Update campaign with batch info (store first batch ID for backwards compatibility)
         await storage.updateCampaignStatus(id, 'active');
         await storage.updateCampaignStats(id, {
           totalCalls: phoneNumbers.length,
           startedAt: new Date(),
-          retellBatchId: batchCall.batch_call_id,
+          retellBatchId: batchCallIds[0], // Store first batch ID for backwards compatibility
           batchStats: {
-            batch_call_id: batchCall.batch_call_id,
-            total_task_count: batchCall.total_task_count,
-            scheduled_timestamp: batchCall.scheduled_timestamp,
-            phone_numbers: phoneNumbers.map(p => p.id), // Track which numbers are in this batch
+            batch_call_ids: batchCallIds, // Store all batch IDs
+            total_batches: chunks.length,
+            total_task_count: totalTaskCount,
+            phone_numbers: phoneNumbers.map(p => p.id),
           },
         });
 
-        console.log(`✅ Campaign ${id} started with Retell Batch Calling. Webhooks will populate call records.`);
+        console.log(`✅ Campaign ${id} started with ${chunks.length} Retell batch call(s). Webhooks will populate call records.`);
         
         const updatedCampaign = await storage.getCampaign(id);
         res.json({ message: "Campaign started successfully", campaign: updatedCampaign });
