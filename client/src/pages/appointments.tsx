@@ -49,8 +49,9 @@ export default function Appointments() {
     refetchInterval: 10000,
   });
 
+  // Load all calls to match with appointments (use high limit to get all)
   const { data: callsData } = useQuery<{ calls: Call[], total: number }>({
-    queryKey: ["/api/calls"],
+    queryKey: ["/api/calls", { limit: 10000, page: 1 }],
   });
   
   const calls = callsData?.calls || [];
@@ -233,21 +234,29 @@ export default function Appointments() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {phoneNumber && matchingCall ? (
-                            <Link href={`/calls/${matchingCall.id}`}>
-                              <div className="flex items-center gap-1 text-sm font-mono hover-elevate cursor-pointer text-primary hover:underline">
-                                <Phone className="h-3 w-3" />
+                          <div className="flex flex-col gap-1.5">
+                            {phoneNumber && matchingCall ? (
+                              <>
+                                <Link href={`/calls/${matchingCall.id}`}>
+                                  <div className="flex items-center gap-1 text-sm font-mono hover-elevate active-elevate-2 cursor-pointer text-primary hover:underline rounded px-2 py-1 w-fit">
+                                    <Phone className="h-3 w-3" />
+                                    {phoneNumber}
+                                  </div>
+                                </Link>
+                                <Badge className="bg-blue-600 hover:bg-blue-700 text-white w-fit text-xs">
+                                  <ExternalLink className="h-3 w-3 mr-1" />
+                                  Ver Llamada ({formatDuration(matchingCall.durationMs)})
+                                </Badge>
+                              </>
+                            ) : phoneNumber ? (
+                              <div className="flex items-center gap-1 text-sm font-mono">
+                                <Phone className="h-3 w-3 text-muted-foreground" />
                                 {phoneNumber}
                               </div>
-                            </Link>
-                          ) : phoneNumber ? (
-                            <div className="flex items-center gap-1 text-sm font-mono">
-                              <Phone className="h-3 w-3 text-muted-foreground" />
-                              {phoneNumber}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">No phone</span>
-                          )}
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No phone</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
