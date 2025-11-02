@@ -11,7 +11,7 @@ import type { Call, CallLog } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-function TokenUsageDisplay({ tokenUsage }: { tokenUsage: { average?: number; num_requests?: number; values?: number[] } }) {
+function TokenUsageDisplay({ tokenUsage }: { tokenUsage: { average?: number; num_requests?: number; values?: number[] } }): JSX.Element {
   return (
     <div>
       <p className="text-sm font-medium mb-2">LLM Token Usage</p>
@@ -35,7 +35,7 @@ function TokenUsageDisplay({ tokenUsage }: { tokenUsage: { average?: number; num
   );
 }
 
-function CostBreakdownDisplay({ callCost }: { callCost: { product_costs?: Array<{product: string; cost: number}>; combined_cost?: number } }) {
+function CostBreakdownDisplay({ callCost }: { callCost: { product_costs?: Array<{product: string; cost: number}>; combined_cost?: number } }): JSX.Element {
   return (
     <div>
       <p className="text-sm font-medium mb-2">Cost Breakdown</p>
@@ -55,7 +55,7 @@ function CostBreakdownDisplay({ callCost }: { callCost: { product_costs?: Array<
   );
 }
 
-function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }> }) {
+function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }> }): JSX.Element {
   return (
     <div>
       <p className="text-sm font-medium mb-2">Latency Metrics (p50)</p>
@@ -73,7 +73,7 @@ function LatencyDisplay({ latency }: { latency: Record<string, { p50?: number }>
   );
 }
 
-function ChatGPTAnalysisDisplay({ analysis, onReverifyCalcom, isReverifying }: { analysis: any; onReverifyCalcom?: () => void; isReverifying?: boolean }) {
+function ChatGPTAnalysisDisplay({ analysis, onReverifyCalcom, isReverifying }: { analysis: any; onReverifyCalcom?: () => void; isReverifying?: boolean }): JSX.Element {
   return (
     <div className="border-2 border-primary/20 rounded-lg p-4 bg-primary/5 space-y-4">
       <div className="flex items-center gap-2 mb-3">
@@ -279,7 +279,7 @@ function ChatGPTAnalysisDisplay({ analysis, onReverifyCalcom, isReverifying }: {
   );
 }
 
-function CustomAnalysisDisplay({ customData }: { customData: Record<string, any> }) {
+function CustomAnalysisDisplay({ customData }: { customData: Record<string, any> }): JSX.Element {
   return (
     <div className="border-t pt-4">
       <p className="text-sm font-medium mb-3">Post-Call Analysis (Custom Fields)</p>
