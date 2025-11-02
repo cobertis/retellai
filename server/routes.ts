@@ -2479,45 +2479,67 @@ export function registerRoutes(app: Express) {
       if (event.call?.call_id) {
         let call = await storage.getCall(event.call.call_id);
         
-        // If call doesn't exist and we have metadata, create it now
-        if (!call && event.call.metadata) {
-          const metadata = event.call.metadata;
-          await storage.createCall({
-            id: event.call.call_id,
-            userId: metadata.userId,
-            campaignId: metadata.campaignId,
-            agentId: metadata.agentId,
-            fromNumber: event.call.from_number || '',
-            toNumber: event.call.to_number || '',
-            callStatus: 'registered',
-            startTimestamp: event.call.start_timestamp ? new Date(event.call.start_timestamp) : null,
-            endTimestamp: null,
-            durationMs: null,
-            disconnectionReason: null,
-            metadata: {
-              listId: metadata.listId,
-              phoneNumberId: metadata.phoneNumberId,
-              isBatchCall: true,
-            },
-          });
+        // IMPORTANT: Retell sends campaign/user data in retell_llm_dynamic_variables, not metadata
+        const dynamicVars = event.call.retell_llm_dynamic_variables;
+        
+        // If call doesn't exist and we have dynamic variables with campaign info, create it now
+        if (!call && dynamicVars?.campaign_id) {
+          console.log(`📝 Creating call record from webhook (${event.event}) for call ${event.call.call_id}`);
           
-          // Also create call log record
-          await storage.createCallLog({
-            id: randomUUID(),
-            callId: event.call.call_id,
-            transcript: null,
-            recordingUrl: null,
-            callSummary: null,
-            callSuccessful: null,
-            userSentiment: null,
-            inVoicemail: null,
-          });
+          // Get campaign to find userId
+          const campaign = await storage.getCampaign(dynamicVars.campaign_id);
+          if (!campaign) {
+            console.error(`❌ Campaign ${dynamicVars.campaign_id} not found for call ${event.call.call_id}`);
+            return res.status(200).json({ received: true, ignored: true, reason: 'campaign_not_found' });
+          }
           
-          console.log(`📝 Created call record from webhook (${event.event}) for call ${event.call.call_id}`);
-        } else if (!call && !event.call.metadata) {
+          try {
+            await storage.createCall({
+              id: event.call.call_id,
+              userId: campaign.userId,
+              campaignId: dynamicVars.campaign_id,
+              agentId: event.call.agent_id,
+              fromNumber: event.call.from_number || '',
+              toNumber: event.call.to_number || '',
+              callStatus: 'registered',
+              startTimestamp: event.call.start_timestamp ? new Date(event.call.start_timestamp) : null,
+              endTimestamp: null,
+              durationMs: null,
+              disconnectionReason: null,
+              metadata: {
+                listId: dynamicVars.list_id,
+                phoneNumberId: dynamicVars.phone_number_id,
+                customerName: dynamicVars.customer_name,
+                isBatchCall: true,
+                batchCallId: event.call.batch_call_id,
+              },
+            });
+            
+            // Also create call log record
+            await storage.createCallLog({
+              id: randomUUID(),
+              callId: event.call.call_id,
+              transcript: null,
+              recordingUrl: null,
+              callSummary: null,
+              callSuccessful: null,
+              userSentiment: null,
+              inVoicemail: null,
+            });
+            
+            console.log(`✅ Created call record for campaign ${dynamicVars.campaign_id}`);
+          } catch (createError: any) {
+            // Ignore duplicate key errors (happens when multiple webhooks arrive simultaneously)
+            if (createError.code === '23505') {
+              console.log(`ℹ️  Call ${event.call.call_id} already exists (race condition), continuing...`);
+            } else {
+              throw createError; // Re-throw other errors
+            }
+          }
+        } else if (!call && !dynamicVars?.campaign_id) {
           // Webhook for a call we don't track (probably from old campaign or manual call)
           // Return success but don't process it
-          console.log(`⚠️  Ignoring webhook for unknown call ${event.call.call_id} (no metadata)`);
+          console.log(`⚠️  Ignoring webhook for unknown call ${event.call.call_id} (no campaign_id in dynamic variables)`);
           return res.status(200).json({ received: true, ignored: true });
         }
       }
