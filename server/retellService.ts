@@ -146,6 +146,26 @@ export class RetellService {
       throw new Error(error.message || 'Failed to create batch call');
     }
   }
+
+  async retrieveBatchCall(batchCallId: string) {
+    try {
+      const batchCall = await retellClient.batchCall.retrieve(batchCallId);
+      return batchCall;
+    } catch (error: any) {
+      console.error('Error retrieving Retell batch call:', error);
+      throw new Error(error.message || 'Failed to retrieve batch call');
+    }
+  }
+
+  async listBatchCalls() {
+    try {
+      const batchCalls = await retellClient.batchCall.list();
+      return batchCalls;
+    } catch (error: any) {
+      console.error('Error listing Retell batch calls:', error);
+      throw new Error(error.message || 'Failed to list batch calls');
+    }
+  }
 }
 
 export const retellService = new RetellService();
