@@ -2430,7 +2430,55 @@ export function registerRoutes(app: Express) {
     try {
       const event = req.body;
       
-      // Log the webhook event
+      // CRITICAL FIX: Ensure call record exists BEFORE logging webhook event
+      // This prevents foreign key constraint violations when webhooks arrive out of order
+      if (event.call?.call_id) {
+        let call = await storage.getCall(event.call.call_id);
+        
+        // If call doesn't exist and we have metadata, create it now
+        if (!call && event.call.metadata) {
+          const metadata = event.call.metadata;
+          await storage.createCall({
+            id: event.call.call_id,
+            userId: metadata.userId,
+            campaignId: metadata.campaignId,
+            agentId: metadata.agentId,
+            fromNumber: event.call.from_number || '',
+            toNumber: event.call.to_number || '',
+            callStatus: 'registered',
+            startTimestamp: event.call.start_timestamp ? new Date(event.call.start_timestamp) : null,
+            endTimestamp: null,
+            durationMs: null,
+            disconnectionReason: null,
+            metadata: {
+              listId: metadata.listId,
+              phoneNumberId: metadata.phoneNumberId,
+              isBatchCall: true,
+            },
+          });
+          
+          // Also create call log record
+          await storage.createCallLog({
+            id: randomUUID(),
+            callId: event.call.call_id,
+            transcript: null,
+            recordingUrl: null,
+            callSummary: null,
+            callSuccessful: null,
+            userSentiment: null,
+            inVoicemail: null,
+          });
+          
+          console.log(`📝 Created call record from webhook (${event.event}) for call ${event.call.call_id}`);
+        } else if (!call && !event.call.metadata) {
+          // Webhook for a call we don't track (probably from old campaign or manual call)
+          // Return success but don't process it
+          console.log(`⚠️  Ignoring webhook for unknown call ${event.call.call_id} (no metadata)`);
+          return res.status(200).json({ received: true, ignored: true });
+        }
+      }
+      
+      // Now log the webhook event (call record is guaranteed to exist)
       await storage.createWebhookEvent({
         eventType: event.event,
         callId: event.call?.call_id || null,
@@ -2442,52 +2490,12 @@ export function registerRoutes(app: Express) {
       switch (event.event) {
         case 'call_started':
           if (event.call) {
-            // Check if call record exists
-            let call = await storage.getCall(event.call.call_id);
-            
-            if (!call && event.call.metadata) {
-              // Create call record from webhook metadata (batch call case)
-              const metadata = event.call.metadata;
-              await storage.createCall({
-                id: event.call.call_id,
-                userId: metadata.userId,
-                campaignId: metadata.campaignId,
-                agentId: metadata.agentId,
-                fromNumber: event.call.from_number || '',
-                toNumber: event.call.to_number || '',
-                callStatus: 'in_progress',
-                startTimestamp: event.call.start_timestamp ? new Date(event.call.start_timestamp) : null,
-                endTimestamp: null,
-                durationMs: null,
-                disconnectionReason: null,
-                metadata: {
-                  listId: metadata.listId,
-                  phoneNumberId: metadata.phoneNumberId,
-                  isBatchCall: true,
-                },
-              });
-              
-              // Also create call log record
-              await storage.createCallLog({
-                id: randomUUID(),
-                callId: event.call.call_id,
-                transcript: null,
-                recordingUrl: null,
-                callSummary: null,
-                callSuccessful: null,
-                userSentiment: null,
-                inVoicemail: null,
-              });
-              
-              console.log(`📝 Created call record from webhook for batch call ${event.call.call_id}`);
-            } else {
-              // Update existing call
-              await storage.updateCallStatus(
-                event.call.call_id,
-                'in_progress',
-                event.call.start_timestamp ? new Date(event.call.start_timestamp) : undefined
-              );
-            }
+            // Update call status to in_progress
+            await storage.updateCallStatus(
+              event.call.call_id,
+              'in_progress',
+              event.call.start_timestamp ? new Date(event.call.start_timestamp) : undefined
+            );
           }
           break;
 
