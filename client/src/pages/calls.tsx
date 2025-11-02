@@ -358,7 +358,7 @@ export default function Calls() {
                                   <>
                                     {getCallTypeBadge(callType)}
                                     {noAppointmentReason && (
-                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-xs line-clamp-2" data-testid={`text-no-appointment-reason-${call.id}`}>
+                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-md" data-testid={`text-no-appointment-reason-${call.id}`}>
                                         {noAppointmentReason}
                                       </div>
                                     )}
@@ -369,7 +369,7 @@ export default function Calls() {
                                       No agendada
                                     </Badge>
                                     {noAppointmentReason && (
-                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-xs line-clamp-2" data-testid={`text-no-appointment-reason-${call.id}`}>
+                                      <div className="text-xs text-muted-foreground mt-0.5 max-w-md" data-testid={`text-no-appointment-reason-${call.id}`}>
                                         {noAppointmentReason}
                                       </div>
                                     )}
