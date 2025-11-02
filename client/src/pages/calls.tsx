@@ -43,12 +43,28 @@ const formatDuration = (ms: number | null) => {
 export default function Calls() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const limit = 50;
 
-  const { data: calls, isLoading } = useQuery<Call[]>({
-    queryKey: ["/api/calls"],
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1); // Reset to first page when searching
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const { data, isLoading } = useQuery<{ calls: Call[]; total: number }>({
+    queryKey: ["/api/calls", { limit, offset: (page - 1) * limit, search: debouncedSearch }],
     refetchInterval: 5000, // Refetch every 5 seconds
   });
+
+  const calls = data?.calls || [];
+  const totalCalls = data?.total || 0;
+  const totalPages = Math.ceil(totalCalls / limit);
 
   // Sync call status from Retell API
   const syncMutation = useMutation({
@@ -91,13 +107,8 @@ export default function Calls() {
     };
   }, [calls, syncMutation.isPending]);
 
-  const filteredCalls = calls?.filter((call) => {
-    const matchesSearch = 
-      call.toNumber.includes(search) ||
-      (call.fromNumber && call.fromNumber.includes(search)) ||
-      call.id.toLowerCase().includes(search.toLowerCase());
-    
-    // Enhanced status filtering
+  // Filter by status only (search is now handled by backend)
+  const filteredCalls = calls.filter((call) => {
     let matchesStatus = true;
     if (statusFilter !== "all") {
       const analysis = call.aiAnalysis as any;
@@ -130,7 +141,7 @@ export default function Calls() {
       }
     }
     
-    return matchesSearch && matchesStatus;
+    return matchesStatus;
   });
 
   return (
@@ -146,7 +157,7 @@ export default function Calls() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by phone number or call ID..."
+            placeholder="Search by phone number, customer name, or call ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -304,8 +315,33 @@ export default function Calls() {
       </Card>
 
       {filteredCalls && filteredCalls.length > 0 && (
-        <div className="text-sm text-muted-foreground text-center">
-          Showing {filteredCalls.length} of {calls?.length || 0} calls
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Showing {((page - 1) * limit) + 1}-{Math.min(page * limit, totalCalls)} of {totalCalls} calls
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              data-testid="button-previous-page"
+            >
+              Previous
+            </Button>
+            <div className="flex items-center px-3 text-sm">
+              Page {page} of {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              data-testid="button-next-page"
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </div>

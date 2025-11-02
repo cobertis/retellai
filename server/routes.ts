@@ -2001,8 +2001,12 @@ export function registerRoutes(app: Express) {
   app.get("/api/calls", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const calls = await storage.listCalls(userId);
-      res.json(calls);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      const search = req.query.search as string || '';
+
+      const result = await storage.listCalls(userId, { limit, offset, search });
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -2011,7 +2015,7 @@ export function registerRoutes(app: Express) {
   app.get("/api/calls/stats/appointments", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
-      const calls = await storage.listCalls(userId);
+      const { calls } = await storage.listCalls(userId, { limit: 10000 }); // Get all calls for stats
       
       const appointmentCount = calls.filter((call: any) => {
         const analysis = call.aiAnalysis;
@@ -2402,7 +2406,7 @@ export function registerRoutes(app: Express) {
       }
       
       // Get all calls with appointments that don't have Cal.com verification yet
-      const allCalls = await storage.listCalls(userId);
+      const { calls: allCalls } = await storage.listCalls(userId, { limit: 10000 }); // Get all for verification
       const callsToVerify = allCalls.filter((call: any) => {
         const analysis = call.aiAnalysis;
         return analysis?.appointmentScheduled === true && !analysis?.calcomVerification;

@@ -81,7 +81,7 @@ export interface IStorage {
   // Call operations
   createCall(call: InsertCall): Promise<Call>;
   getCall(id: string): Promise<Call | undefined>;
-  listCalls(userId: string): Promise<Call[]>;
+  listCalls(userId: string, options?: { limit?: number; offset?: number; search?: string }): Promise<{ calls: Call[]; total: number }>;
   getActiveCalls(userId: string): Promise<Call[]>;
   getQueuedCalls(campaignId: string): Promise<Call[]>;
   getRetriableCalls(campaignId: string): Promise<Call[]>;
@@ -505,13 +505,42 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(calls).where(eq(calls.campaignId, campaignId));
   }
 
-  async listCalls(userId: string): Promise<Call[]> {
-    return await db
+  async listCalls(userId: string, options?: { limit?: number; offset?: number; search?: string }): Promise<{ calls: Call[]; total: number }> {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+    const search = options?.search || '';
+
+    // Build where conditions
+    let whereConditions = [eq(calls.userId, userId)];
+    
+    // Add search condition if search term is provided
+    if (search) {
+      whereConditions.push(
+        sql`(
+          ${calls.toNumber} ILIKE ${`%${search}%`} OR 
+          ${calls.fromNumber} ILIKE ${`%${search}%`} OR 
+          ${calls.id} ILIKE ${`%${search}%`} OR
+          CAST(${calls.aiAnalysis}->>'customerName' AS TEXT) ILIKE ${`%${search}%`}
+        )`
+      );
+    }
+
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(calls)
+      .where(and(...whereConditions));
+
+    // Get paginated calls
+    const callsData = await db
       .select()
       .from(calls)
-      .where(eq(calls.userId, userId))
+      .where(and(...whereConditions))
       .orderBy(desc(calls.createdAt))
-      .limit(100);
+      .limit(limit)
+      .offset(offset);
+
+    return { calls: callsData, total: count };
   }
 
   async getActiveCalls(userId: string): Promise<Call[]> {
