@@ -49,9 +49,11 @@ export default function Appointments() {
     refetchInterval: 10000,
   });
 
-  const { data: calls } = useQuery<Call[]>({
+  const { data: callsData } = useQuery<{ calls: Call[], total: number }>({
     queryKey: ["/api/calls"],
   });
+  
+  const calls = callsData?.calls || [];
 
   // Filter bookings based on search
   const filteredBookings = bookings?.filter((booking) => {
